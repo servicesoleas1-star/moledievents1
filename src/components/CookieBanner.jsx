@@ -19,7 +19,7 @@ function CookieBanner() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-50 bg-ink-900 text-white/90 px-4 py-4 sm:px-6">
+    <div className="fixed bottom-0 inset-x-0 z-40 bg-ink-900 text-white/90 px-4 py-4 sm:px-6 border-t border-white/10">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center gap-4 justify-between">
         <p className="text-sm normal-case text-center sm:text-left">
           Nous utilisons des cookies pour améliorer votre expérience et
