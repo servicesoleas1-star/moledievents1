@@ -1,10 +1,10 @@
 import { LanguageProvider } from './i18n/LanguageContext';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
-import ScrollStory from './components/sections/ScrollStory';
+import ZUIHubStory from './components/sections/ZUIHubStory';
 import PortalTransition from './components/sections/PortalTransition';
-import FeaturedRow from './components/sections/FeaturedRow';
-import HowItWorks from './components/sections/HowItWorks';
+import PanningFeatured from './components/sections/PanningFeatured';
+import SplitScreenHow from './components/sections/SplitScreenHow';
 import Testimonials from './components/sections/Testimonials';
 import Coverage from './components/sections/Coverage';
 import PricingTeaser from './components/sections/PricingTeaser';
@@ -18,10 +18,10 @@ function App() {
         <Navbar />
         <main>
           <Hero />
-          <ScrollStory />
+          <ZUIHubStory />
           <PortalTransition />
-          <FeaturedRow />
-          <HowItWorks />
+          <PanningFeatured />
+          <SplitScreenHow />
           <Testimonials />
           <Coverage />
           <PricingTeaser />
