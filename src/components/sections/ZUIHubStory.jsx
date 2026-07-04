@@ -356,12 +356,22 @@ function ZUIHubStory() {
   };
 
   return (
-    <section
-      ref={rootRef}
-      data-navbar-theme="dark"
-      className="relative bg-ink-900 h-[100svh] overflow-hidden"
-      aria-label="Les 6 univers de Moledi Events"
-    >
+    // Outer buffer: the section itself is `sticky`, pinned inside a wrapper
+    // taller than the viewport. Without this, the section was a normal
+    // in-flow 100svh block whose "am I at the top of the viewport" check
+    // only held true for a single pixel of scroll — any regular wheel
+    // notch (~100px+) jumped straight past that pixel in one event, so the
+    // step-jacking logic never engaged and the whole story was skipped
+    // entirely on a normal scroll. Sticky + a generous buffer keeps the
+    // section pinned at top:0 across a wide scroll range, so entry is
+    // caught reliably no matter how large a single scroll/swipe delta is.
+    <div className="relative" style={{ height: 'calc(100svh + 100vh)' }}>
+      <section
+        ref={rootRef}
+        data-navbar-theme="dark"
+        className="sticky top-0 bg-ink-900 h-[100svh] overflow-hidden"
+        aria-label="Les 6 univers de Moledi Events"
+      >
       <div className="absolute inset-0 bg-gradient-to-br from-ink-900 via-[#0F1E3D] to-ink-900" />
       {/* Organic blob shapes (asymmetric border-radius, not perfect circles)
           slowly drifting — reads as a soft curved backdrop rather than the
@@ -433,7 +443,8 @@ function ZUIHubStory() {
         onSelect={(i) => goToLabel(`zoom1-${i}`)}
         onHome={() => goToLabel('overview-0')}
       />
-    </section>
+      </section>
+    </div>
   );
 }
 
