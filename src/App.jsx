@@ -3,8 +3,8 @@ import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import ZUIHubStory from './components/sections/ZUIHubStory';
 import PortalTransition from './components/sections/PortalTransition';
-import PanningFeatured from './components/sections/PanningFeatured';
-import SplitScreenHow from './components/sections/SplitScreenHow';
+import FeaturedMarquee from './components/sections/FeaturedMarquee';
+import HowTimeline from './components/sections/HowTimeline';
 import Testimonials from './components/sections/Testimonials';
 import Coverage from './components/sections/Coverage';
 import PricingTeaser from './components/sections/PricingTeaser';
@@ -20,8 +20,8 @@ function App() {
           <Hero />
           <ZUIHubStory />
           <PortalTransition />
-          <PanningFeatured />
-          <SplitScreenHow />
+          <FeaturedMarquee />
+          <HowTimeline />
           <Testimonials />
           <Coverage />
           <PricingTeaser />

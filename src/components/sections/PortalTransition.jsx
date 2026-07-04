@@ -2,44 +2,53 @@ import { useRef } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 
 /**
- * "Gates opening" transition — two luminous doors slide apart on scroll,
- * revealing daylight behind, bridging the immersive story to the real content.
+ * Light-ray transition — a soft luminous burst blooms from a horizon line,
+ * washes the screen in warm brand light, then dissolves into the next
+ * section. Compact (100vh) and mobile-friendly.
  */
 function PortalTransition() {
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] });
 
-  const leftX = useTransform(scrollYProgress, [0.15, 0.6], ['0%', '-100%']);
-  const rightX = useTransform(scrollYProgress, [0.15, 0.6], ['0%', '100%']);
-  const glow = useTransform(scrollYProgress, [0.15, 0.45, 0.7], [0, 1, 0]);
-  const textOpacity = useTransform(scrollYProgress, [0.35, 0.5, 0.65], [0, 1, 0]);
-  const textScale = useTransform(scrollYProgress, [0.35, 0.65], [0.9, 1.1]);
+  const rayScale = useTransform(scrollYProgress, [0.2, 0.55, 0.8], [0.4, 1.6, 3.4]);
+  const rayOpacity = useTransform(scrollYProgress, [0.2, 0.5, 0.75, 0.95], [0, 1, 1, 0]);
+  const bgWash = useTransform(scrollYProgress, [0.3, 0.7], [0, 1]);
+  const textOpacity = useTransform(scrollYProgress, [0.35, 0.5, 0.7], [0, 1, 0]);
+  const textY = useTransform(scrollYProgress, [0.35, 0.7], [24, -12]);
 
   return (
-    <section ref={ref} className="relative h-[130vh] bg-white">
-      <div className="sticky top-0 h-screen overflow-hidden flex items-center justify-center">
-        {/* Daylight behind the doors */}
-        <div className="absolute inset-0 bg-gradient-to-b from-white via-orange-50 to-secondary-50" />
+    <section ref={ref} className="relative h-screen bg-ink-900 overflow-hidden">
+      <div className="sticky top-0 h-screen flex items-center justify-center overflow-hidden">
+        {/* Horizon */}
+        <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+
+        {/* Warm brand wash */}
         <motion.div
-          style={{ opacity: glow }}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[60vw] rounded-full bg-primary/30 blur-3xl"
+          style={{ opacity: bgWash }}
+          className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/25 to-transparent"
         />
 
-        {/* Center message */}
-        <motion.div style={{ opacity: textOpacity, scale: textScale }} className="relative z-10 text-center px-6">
-          <p className="text-secondary font-semibold tracking-[0.2em] uppercase text-xs mb-3">En ce moment</p>
-          <h2 className="text-ink-900 text-3xl sm:text-5xl">Place aux événements</h2>
+        {/* Central light ray — a bloom of orange light */}
+        <motion.div
+          style={{ scale: rayScale, opacity: rayOpacity }}
+          className="absolute w-[36rem] h-[36rem] rounded-full origin-center"
+        >
+          <div className="absolute inset-0 rounded-full bg-primary/40 blur-3xl" />
+          <div className="absolute inset-8 rounded-full bg-[#FFB347]/40 blur-3xl" />
+          <div className="absolute inset-16 rounded-full bg-white/50 blur-2xl" />
         </motion.div>
 
-        {/* Left door */}
-        <motion.div style={{ x: leftX }} className="absolute inset-y-0 left-0 w-1/2 bg-ink-900 border-r border-white/10">
-          <div className="absolute inset-0 bg-gradient-to-r from-ink-900 to-secondary-400/20" />
-          <div className="absolute right-0 inset-y-0 w-px bg-gradient-to-b from-transparent via-primary to-transparent" />
-        </motion.div>
-        {/* Right door */}
-        <motion.div style={{ x: rightX }} className="absolute inset-y-0 right-0 w-1/2 bg-ink-900 border-l border-white/10">
-          <div className="absolute inset-0 bg-gradient-to-l from-ink-900 to-primary/20" />
-          <div className="absolute left-0 inset-y-0 w-px bg-gradient-to-b from-transparent via-primary to-transparent" />
+        {/* Slogan */}
+        <motion.div
+          style={{ opacity: textOpacity, y: textY }}
+          className="relative z-10 text-center px-6"
+        >
+          <p className="text-white/70 text-xs tracking-[0.35em] uppercase mb-3">
+            Moledi Events
+          </p>
+          <h2 className="text-white text-3xl sm:text-5xl leading-tight max-w-3xl mx-auto">
+            Faites entrer la fête<br className="hidden sm:block" /> dans votre poche
+          </h2>
         </motion.div>
       </div>
     </section>

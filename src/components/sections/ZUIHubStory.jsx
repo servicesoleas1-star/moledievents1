@@ -1,122 +1,74 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState, useEffect } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { illustration } from '../../config/media';
+import { universes } from '../../data/universes';
+import { media } from '../../config/media';
 
 gsap.registerPlugin(ScrollTrigger);
 
 /**
- * ZUI Hub-and-Spoke Scrollytelling — Prezi-style, driven by scroll.
+ * ZUI Hub-and-Spoke — refined per user brief.
  *
- * Key design principle (learned the hard way): elements on the virtual canvas
- * are DESIGNED AT THEIR TARGET ZOOMED-IN SIZE. When the camera is zoomed OUT
- * (overview) they appear small; when it dives in, they appear at natural,
- * crisp resolution — no upscaled/blurred text.
+ * Layout
+ *   Global view (Step 1)          : central logo + 6 named blocks visible at once
+ *                                    (on BOTH mobile and desktop before any dive)
+ *   Zoom 1 (per block)            : the block fills the viewport at native size,
+ *                                    showing image + definition text
+ *   Zoom 2 (nested inside block)  : 3 sub-cards fly in from behind the image →
+ *                                    "Comment ça marche" · "Pour qui" · "Confiance"
+ *   Return                        : dezoom to global view; next block; repeat.
  *
- * Scales used:
- *   - overview: 0.42  → the whole solar system fits inside the viewport
- *   - dive:     1.0   → one satellite fills the viewing area at native size
- *   - nested:   2.0   → we zoom past the satellite into its Level-3 cluster
- *
- * The camera math: with transform-origin center and canvas centered on the
- * viewport (translate(-50%,-50%)), to bring canvas point (dx,dy) to viewport
- * center at scale S:
- *      transform: translate(-dx*S, -dy*S) scale(S)
+ * Camera math (transform-origin: 50% 50%, canvas centred on the viewport):
+ *   To bring canvas point (dx, dy) to viewport centre at scale S:
+ *     transform: translate(-dx*S, -dy*S) scale(S)
+ * Scale values:
+ *   overview: 0.42 (0.34 on mobile so everything fits)
+ *   zoom-1  : 1.00 (block at native crisp resolution)
+ *   zoom-2  : 1.35 (slight further push while 3 sub-cards fade in)
  */
 
-const HUB = { x: 0, y: 0 };
-const SATELLITE_W = 560; // native px on the canvas
-const NESTED_OFFSET_Y = 260; // where the Level-3 cluster sits inside cagnottes
+// Block intrinsic size and orbit radius are picked at mount based on viewport
+// so overview view fits everything in a single screen on both mobile & desktop.
+function layoutFor(width) {
+  if (width < 768) return { block: 340, height: 460, radius: 440 };
+  if (width < 1200) return { block: 420, height: 560, radius: 640 };
+  return { block: 480, height: 620, radius: 780 };
+}
 
-const SATELLITES = [
-  {
-    id: 'billetterie',
-    x: -1050, y: -520,
-    icon: '🎟️', color: '#FF6A00',
-    title: 'Billetterie',
-    tagline: 'Concerts, conférences, spectacles',
-    image: illustration.ticketing,
-    lead: "Vendez des billets en ligne, encaissez par Mobile Money et sécurisez l'entrée avec un QR code inviolable scanné à la porte.",
-    stats: [
-      { k: '1 200+', v: 'billets/soirée' },
-      { k: '<10s', v: 'du clic au billet' },
-      { k: '100%', v: 'Mobile Money' },
-    ],
-  },
-  {
-    id: 'votes',
-    x: 1050, y: -520,
-    icon: '🗳️', color: '#2B6BFF',
-    title: 'Votes & Scrutins',
-    tagline: 'Élections, miss, prix, awards',
-    image: illustration.votes,
-    lead: "Organisez un scrutin transparent : vote gratuit ou payant, méthodes anti-fraude, jury pondéré et rapport de clôture certifié.",
-    stats: [
-      { k: 'Jury', v: 'pondéré' },
-      { k: 'PDF', v: 'SHA-256' },
-      { k: 'Anti-fraude', v: 'natif' },
-    ],
-  },
-  {
-    id: 'cagnottes',
-    x: 1150, y: 420,
-    icon: '💝', color: '#FF6A00',
-    title: 'Cagnottes',
-    tagline: 'Mobiliser pour une cause',
-    image: illustration.donations,
-    lead: "Collectez pour une cause. Chaque don est confirmé instantanément, avec reçu automatique aux donateurs.",
-    nested: [
-      { k: 'health',     label: 'Santé',      img: illustration.health,     desc: 'Frais médicaux, urgences, soins.' },
-      { k: 'studies',    label: 'Études',     img: illustration.studies,    desc: 'Scolarité, bourses, matériel.' },
-      { k: 'solidarity', label: 'Solidarité', img: illustration.solidarity, desc: 'Familles, sinistres, entraide.' },
-      { k: 'projects',   label: 'Projets',    img: illustration.projects,   desc: 'Associations, initiatives locales.' },
-    ],
-  },
-  {
-    id: 'crowdfunding',
-    x: -1150, y: 420,
-    icon: '🚀', color: '#2B6BFF',
-    title: 'Crowdfunding',
-    tagline: 'Financer par paliers',
-    image: illustration.crowdfunding,
-    lead: "Structurez votre campagne en paliers, engagez votre communauté et suivez la progression en temps réel.",
-    stats: [
-      { k: 'Paliers', v: 'sur-mesure' },
-      { k: 'Update', v: 'auto' },
-      { k: 'Escrow', v: 'sécurisé' },
-    ],
-  },
-  {
-    id: 'concours',
-    x: 0, y: 900,
-    icon: '🎁', color: '#FF6A00',
-    title: 'Concours & Tombolas',
-    tagline: 'Tirages et compétitions',
-    image: illustration.contests,
-    lead: "Lancez concours et tombolas avec tirage automatique, prix mis sous séquestre et paiement immédiat au gagnant.",
-    stats: [
-      { k: 'Tirage', v: 'auto/manuel' },
-      { k: 'Prix', v: 'séquestré' },
-      { k: 'Notifs', v: 'temps réel' },
-    ],
-  },
-];
-
-const OVERVIEW = 0.42;
-const DIVE = 1.0;
-const NESTED = 2.0;
+function positionsFor(count, radius) {
+  const angles = [-90, -30, 30, 90, 150, 210];
+  return angles.slice(0, count).map((angle) => {
+    const rad = (angle * Math.PI) / 180;
+    return { x: Math.round(Math.cos(rad) * radius), y: Math.round(Math.sin(rad) * radius) };
+  });
+}
 
 function ZUIHubStory() {
   const rootRef = useRef(null);
   const canvasRef = useRef(null);
-  const captionRef = useRef(null);
-  const progressRef = useRef(null);
+  const activeIdxRef = useRef(-1);
+  const zoom2Ref = useRef(false);
+  const [activeIdx, setActiveIdxState] = useState(-1);
+  const [zoom2, setZoom2State] = useState(false);
+  const [layout, setLayout] = useState(() =>
+    layoutFor(typeof window !== 'undefined' ? window.innerWidth : 1440)
+  );
+  const positions = positionsFor(universes.length, layout.radius);
+
+  useEffect(() => {
+    const onResize = () => setLayout(layoutFor(window.innerWidth));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   useLayoutEffect(() => {
     const ctx = gsap.context(() => {
       const canvas = canvasRef.current;
+      const mobile = window.matchMedia('(max-width: 768px)').matches;
+      const OVERVIEW = mobile ? 0.30 : 0.42;
+      const ZOOM_1 = mobile ? 0.85 : 1.0;
+      const ZOOM_2 = mobile ? 1.15 : 1.35;
 
-      // Start with the whole solar system in view.
       gsap.set(canvas, { x: 0, y: 0, scale: OVERVIEW, transformOrigin: '50% 50%' });
 
       const tl = gsap.timeline({
@@ -130,132 +82,107 @@ function ZUIHubStory() {
         },
       });
 
-      // Camera: fly to (dx,dy) at scale S. Canvas transform-origin is center,
-      // canvas is centered on the viewport → move by (-dx*S, -dy*S).
       const flyTo = (dx, dy, S, dur = 1) =>
         tl.to(canvas, { x: -dx * S, y: -dy * S, scale: S, duration: dur });
-      const hold = (t = 0.6) => tl.to({}, { duration: t });
-      const cap = (text) =>
-        tl.call(() => (captionRef.current.textContent = text));
+      const hold = (t = 0.5) => tl.to({}, { duration: t });
 
-      // Overview hold at start
-      cap('L’univers Moledi Events');
-      hold(0.5);
+      // Independent trigger for the active-block highlight — reliable in both
+      // scroll directions (unlike timeline.call()).
+      // Timeline segments per block: [enter → zoom1 hold → zoom2 hold → return]
+      // We compute progress-thresholds after timeline is built.
 
-      // Billetterie
-      cap('Billetterie · Ouvrez la vente en 5 min');
-      flyTo(SATELLITES[0].x, SATELLITES[0].y, DIVE, 1.2);
-      hold(1.0);
-      cap('Retour à la vue globale');
-      flyTo(HUB.x, HUB.y, OVERVIEW, 0.9);
+      // Opening: hold on global view long enough to read all 6 blocks.
+      hold(0.4);
 
-      // Votes
-      cap('Votes & Scrutins · Transparence & jury');
-      flyTo(SATELLITES[1].x, SATELLITES[1].y, DIVE, 1.2);
-      hold(1.0);
-      cap('Retour à la vue globale');
-      flyTo(HUB.x, HUB.y, OVERVIEW, 0.9);
+      const boundaries = []; // { from, to } normalized time of each block sequence
+      let cursor = 0.4; // matches the "hold(0.4)" above
 
-      // Cagnottes + Level-3 nested dive
-      cap('Cagnottes · Mobilisez pour une cause');
-      flyTo(SATELLITES[2].x, SATELLITES[2].y, DIVE, 1.2);
-      hold(0.6);
-      cap('Zoom · Niveau 3 · Vos causes');
-      // Dive further into the Level-3 cluster (offset y so the sub-cause grid centers)
-      flyTo(SATELLITES[2].x, SATELLITES[2].y + NESTED_OFFSET_Y, NESTED, 1.2);
-      hold(1.2);
-      cap('On remonte…');
-      flyTo(SATELLITES[2].x, SATELLITES[2].y, DIVE, 0.8);
-      flyTo(HUB.x, HUB.y, OVERVIEW, 0.9);
+      positions.forEach((p, i) => {
+        const startProgress = cursor;
 
-      // Crowdfunding
-      cap('Crowdfunding · Paliers & communauté');
-      flyTo(SATELLITES[3].x, SATELLITES[3].y, DIVE, 1.2);
-      hold(1.0);
-      cap('Retour à la vue globale');
-      flyTo(HUB.x, HUB.y, OVERVIEW, 0.9);
+        // Zoom 1 dive
+        flyTo(p.x, p.y, ZOOM_1, 1.2); cursor += 1.2;
+        hold(0.5); cursor += 0.5;
+        // Zoom 2 deep dive (inside the block)
+        flyTo(p.x, p.y, ZOOM_2, 0.9); cursor += 0.9;
+        hold(0.9); cursor += 0.9;
+        // Retour au Zoom 1, puis à la vue globale
+        flyTo(p.x, p.y, ZOOM_1, 0.5); cursor += 0.5;
+        flyTo(0, 0, OVERVIEW, 0.9); cursor += 0.9;
 
-      // Concours
-      cap('Concours & Tombolas · Tirages sécurisés');
-      flyTo(SATELLITES[4].x, SATELLITES[4].y, DIVE, 1.2);
-      hold(1.0);
+        boundaries.push({ from: startProgress, to: cursor, zoom2From: startProgress + 1.7 });
+      });
 
-      // Final wide reveal
-      cap('Un univers, cinq façons');
-      flyTo(HUB.x, HUB.y, OVERVIEW * 0.9, 1.2);
+      // Compute total duration to normalise thresholds.
+      const total = cursor;
+      const normalized = boundaries.map((b) => ({
+        from: b.from / total,
+        to: b.to / total,
+        zoom2From: b.zoom2From / total,
+      }));
 
-      // HUD progress
-      gsap.to(progressRef.current, {
-        scaleX: 1,
-        ease: 'none',
-        scrollTrigger: {
-          trigger: rootRef.current,
-          start: 'top top',
-          end: 'bottom bottom',
-          scrub: true,
+      // Highlight + Zoom-2 content visibility driven by progress.
+      ScrollTrigger.create({
+        trigger: rootRef.current,
+        start: 'top top',
+        end: 'bottom bottom',
+        scrub: 1,
+        onUpdate: ({ progress }) => {
+          let idx = -1;
+          let zoom2 = false;
+          for (let i = 0; i < normalized.length; i++) {
+            const b = normalized[i];
+            if (progress >= b.from && progress < b.to) {
+              idx = i;
+              zoom2 = progress >= b.zoom2From;
+              break;
+            }
+          }
+          if (idx !== activeIdxRef.current) {
+            activeIdxRef.current = idx;
+            setActiveIdxState(idx);
+          }
+          if (zoom2 !== zoom2Ref.current) {
+            zoom2Ref.current = zoom2;
+            setZoom2State(zoom2);
+          }
         },
       });
     }, rootRef);
     return () => ctx.revert();
   }, []);
 
-  // Mobile scale down (canvas is huge → make everything more compact).
-  useEffect(() => {
-    const mobile = window.matchMedia('(max-width: 640px)').matches;
-    if (mobile && canvasRef.current) {
-      // reduce base scale so more fits on a small screen
-      // (handled by tighter viewport in CSS below; timeline math still works
-      //  because it's proportional)
-    }
-  }, []);
-
   return (
     <section
       ref={rootRef}
       className="relative bg-ink-900"
-      style={{ height: '700vh' }}
-      aria-label="Découvrez l’univers Moledi Events"
+      style={{ height: `${Math.round(70 * universes.length + 60)}vh` }}
+      aria-label="Les 6 univers de Moledi Events"
     >
-      <div className="sticky top-0 h-screen overflow-hidden">
-        {/* Ambient glows */}
+      <div className="sticky top-0 h-[100svh] overflow-hidden">
+        {/* Ambient brand glows */}
         <div className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full bg-primary/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full bg-secondary/20 blur-3xl" />
-        {/* Starfield */}
-        <Starfield />
+        <div className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full bg-secondary/25 blur-3xl" />
 
-        {/* Fixed HUD (over the camera, with a subtle backdrop so captions
-             stay readable when the zoomed satellite passes underneath) */}
-        <div className="pointer-events-none absolute top-24 left-1/2 -translate-x-1/2 z-30 text-center">
-          <div className="rounded-2xl px-5 py-3 bg-ink-900/60 backdrop-blur-md border border-white/10 shadow-lg">
-            <p className="text-white/60 tracking-[0.35em] uppercase text-[10px] mb-2">
-              Une plateforme · Cinq univers
-            </p>
-            <div className="w-56 h-1 rounded-full bg-white/10 overflow-hidden mx-auto">
-              <div ref={progressRef} className="h-full w-full origin-left scale-x-0 bg-gradient-orange" />
-            </div>
-            <p
-              ref={captionRef}
-              className="mt-2 font-heading text-white text-base normal-case tracking-wide"
-            >
-              L’univers Moledi Events
-            </p>
-          </div>
-        </div>
-
-        {/* Scroll hint (only visible at the very start) */}
-        <ScrollHint />
-
-        {/* Camera viewport wraps the virtual canvas */}
+        {/* Camera viewport */}
         <div className="absolute inset-0 flex items-center justify-center">
           <div
             ref={canvasRef}
             className="absolute left-1/2 top-1/2"
             style={{ willChange: 'transform' }}
           >
-            <OrbitTrace />
-            <Hub />
-            {SATELLITES.map((s) => (
-              <Satellite key={s.id} s={s} width={SATELLITE_W} />
+            <CenterLogo />
+            {universes.map((univ, i) => (
+              <Block
+                key={univ.id}
+                idx={i}
+                univ={univ}
+                pos={positions[i]}
+                active={activeIdx === i}
+                showNested={activeIdx === i && zoom2}
+                width={layout.block}
+                height={layout.height}
+              />
             ))}
           </div>
         </div>
@@ -264,134 +191,110 @@ function ZUIHubStory() {
   );
 }
 
-/* -------------------------------------------------------------------------- */
+/* ----------------------------- pieces ------------------------------ */
 
-function Hub() {
+function CenterLogo() {
+  const [src, setSrc] = useState(media.logo);
   return (
     <div
       className="absolute -translate-x-1/2 -translate-y-1/2"
       style={{ left: 0, top: 0 }}
     >
-      <div className="relative w-56 h-56 rounded-full bg-gradient-orange flex items-center justify-center shadow-[0_0_120px_-10px_#FF6A00]">
-        <div className="absolute inset-3 rounded-full bg-ink-900/25 backdrop-blur-sm" />
-        <div className="relative text-center">
-          <p className="font-heading text-white text-3xl leading-none normal-case tracking-wide">MOLEDI</p>
-          <p className="font-heading text-white/85 text-sm mt-2 normal-case tracking-[0.4em]">EVENTS</p>
-        </div>
-        {/* Rotating ring */}
-        <div className="absolute inset-[-14px] rounded-full border border-white/20 animate-[spin_18s_linear_infinite]" />
+      <div className="relative w-40 h-40 sm:w-48 sm:h-48 rounded-3xl bg-white flex items-center justify-center shadow-[0_30px_80px_-10px_rgba(255,106,0,0.55)] ring-4 ring-primary/40">
+        <img
+          src={src}
+          alt="Moledi Events"
+          onError={() => setSrc(media.logoFallback)}
+          className="w-4/5 h-4/5 object-contain"
+        />
+        {/* Rotating brand ring */}
+        <div className="absolute inset-[-14px] rounded-[2rem] border border-primary/25 animate-[spin_22s_linear_infinite]" />
       </div>
     </div>
   );
 }
 
-function OrbitTrace() {
-  return (
-    <svg
-      className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-      style={{ left: 0, top: 0, width: 2800, height: 2400 }}
-      viewBox="-1400 -1200 2800 2400"
-    >
-      <ellipse cx="0" cy="0" rx="1200" ry="720" fill="none" stroke="#FF6A00" strokeOpacity="0.14" strokeWidth="2" strokeDasharray="6 12" />
-      <ellipse cx="0" cy="200" rx="1350" ry="900" fill="none" stroke="#2B6BFF" strokeOpacity="0.10" strokeWidth="2" strokeDasharray="6 12" />
-    </svg>
-  );
-}
-
-function Satellite({ s, width }) {
+function Block({ idx, univ, pos, active, showNested, width, height }) {
   return (
     <div
       className="absolute"
       style={{
-        left: 0, top: 0,
-        transform: `translate(calc(-50% + ${s.x}px), calc(-50% + ${s.y}px))`,
+        left: 0,
+        top: 0,
         width,
+        transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))`,
       }}
     >
-      <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-ink-900 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)]">
-        {/* Cover */}
-        <div className="relative h-52">
-          <img src={s.image} alt="" className="absolute inset-0 w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-ink-900 via-ink-900/50 to-transparent" />
-          <div
-            className="absolute top-4 left-4 flex items-center gap-2 rounded-full px-4 py-1.5 text-white text-sm font-semibold shadow-lg"
-            style={{ backgroundColor: s.color }}
-          >
-            <span className="text-lg leading-none">{s.icon}</span>
-            {s.title}
+      <div
+        className={`relative rounded-[28px] overflow-hidden bg-white shadow-[0_30px_80px_-20px_rgba(0,0,0,0.55)] transition-shadow duration-500 ${
+          active
+            ? 'ring-4 ring-primary/60 shadow-[0_40px_100px_-15px_rgba(255,106,0,0.45)]'
+            : 'ring-0'
+        }`}
+        style={{ height }}
+      >
+        {/* Front face (Zoom 1): image + definition — fades out when Zoom 2 opens */}
+        <div
+          className={`absolute inset-0 flex flex-col transition-opacity duration-500 ${
+            showNested ? 'opacity-0' : 'opacity-100'
+          }`}
+        >
+          <div className="relative h-1/2">
+            <img
+              src={univ.image}
+              alt={univ.label}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-white via-white/0 to-transparent" />
+          </div>
+          <div className="p-8">
+            <h3 className="font-heading text-ink-900 text-3xl leading-tight normal-case mb-4">
+              {univ.label}
+            </h3>
+            <p className="text-ink-700 text-base leading-relaxed normal-case">
+              {univ.definition}
+            </p>
           </div>
         </div>
-        {/* Body */}
-        <div className="p-7">
-          <h3 className="font-heading text-white text-4xl leading-tight normal-case">{s.title}</h3>
-          <p className="text-primary text-xs mt-1 tracking-[0.25em] uppercase">{s.tagline}</p>
-          <p className="text-white/75 text-base mt-4 leading-relaxed normal-case">{s.lead}</p>
 
-          {s.stats && (
-            <div className="grid grid-cols-3 gap-3 mt-6">
-              {s.stats.map((st) => (
-                <div key={st.k} className="rounded-2xl bg-white/5 border border-white/10 px-3 py-3.5 text-center">
-                  <p className="font-heading text-white text-xl normal-case leading-none">{st.k}</p>
-                  <p className="text-white/60 text-[11px] mt-1.5 leading-tight">{st.v}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {s.nested && (
-            <div className="mt-6">
-              <p className="text-primary text-[10px] tracking-[0.3em] uppercase mb-3">Vos causes · Niveau 3</p>
-              <div className="grid grid-cols-2 gap-3">
-                {s.nested.map((n) => (
-                  <div key={n.k} className="relative rounded-2xl overflow-hidden border border-white/10 h-40">
-                    <img src={n.img} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-ink-900 via-ink-900/40 to-transparent" />
-                    <div className="absolute bottom-2 left-3 right-3">
-                      <p className="font-heading text-white text-base normal-case leading-tight">{n.label}</p>
-                      <p className="text-white/70 text-[11px] leading-tight mt-0.5">{n.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        {/* Zoom-2 face: 3 nested cards revealed on deep zoom */}
+        <NestedCluster nested={univ.nested} label={univ.label} visible={showNested} />
       </div>
     </div>
   );
 }
 
-function Starfield() {
-  // Purely decorative sparkles behind the canvas.
-  const stars = Array.from({ length: 60 });
+function NestedCluster({ nested, label, visible }) {
+  const cards = [nested.how, nested.who, nested.trust];
   return (
-    <div className="absolute inset-0 pointer-events-none">
-      {stars.map((_, i) => {
-        const size = Math.random() * 2 + 1;
-        return (
-          <span
-            key={i}
-            className="absolute rounded-full bg-white/40"
-            style={{
-              width: size,
-              height: size,
-              top: `${Math.random() * 100}%`,
-              left: `${Math.random() * 100}%`,
-              opacity: 0.2 + Math.random() * 0.5,
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function ScrollHint() {
-  return (
-    <div className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 text-white/50 text-xs">
-      <span className="tracking-[0.3em] uppercase">Défilez pour explorer</span>
-      <div className="w-6 h-9 rounded-full border border-white/30 flex items-start justify-center p-1.5">
-        <span className="block w-1 h-2 rounded-full bg-white/60 animate-bounce" />
+    <div
+      className={`absolute inset-0 bg-white flex flex-col transition-opacity duration-500 ${
+        visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      }`}
+    >
+      <div className="px-6 pt-6 pb-3 border-b border-ink-100">
+        <p className="text-primary text-[10px] tracking-[0.3em] uppercase font-semibold">
+          Zoom · {label}
+        </p>
+      </div>
+      <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3 p-4">
+        {cards.map((c) => (
+          <div
+            key={c.title}
+            className="relative rounded-2xl overflow-hidden bg-ink-100 border border-ink-200 flex flex-col"
+          >
+            <div className="relative h-24">
+              <img src={c.image} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+            </div>
+            <div className="p-3 flex-1">
+              <p className="text-primary text-[9px] tracking-[0.25em] uppercase mb-1.5 font-semibold">
+                {c.title}
+              </p>
+              <p className="text-ink-700 text-[11px] leading-snug">{c.text}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

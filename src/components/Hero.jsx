@@ -4,24 +4,23 @@ import { media } from '../config/media';
 
 const wrap = {
   hidden: {},
-  show: { transition: { delayChildren: 0.6, staggerChildren: 0.14 } },
+  show: { transition: { delayChildren: 0.55, staggerChildren: 0.13 } },
 };
 const rise = {
   hidden: { opacity: 0, y: 26 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.75, ease: [0.22, 1, 0.36, 1] } },
 };
 
-// Word-by-word reveal for the headline
-function Reveal({ text, className = '', delay = 0 }) {
+function Reveal({ text, delay = 0 }) {
   return (
-    <span className={className}>
+    <span>
       {text.split(' ').map((word, i) => (
         <span key={i} className="inline-block overflow-hidden align-bottom">
           <motion.span
             className="inline-block"
             initial={{ y: '110%' }}
             animate={{ y: 0 }}
-            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: delay + i * 0.08 }}
+            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: delay + i * 0.07 }}
           >
             {word}&nbsp;
           </motion.span>
@@ -34,118 +33,108 @@ function Reveal({ text, className = '', delay = 0 }) {
 function Hero() {
   const videoRef = useRef(null);
   const [videoReady, setVideoReady] = useState(false);
+  const [videoAvailable, setVideoAvailable] = useState(true);
 
-  // Lazy-load the MP4 after mount: poster shows instantly, video fades in.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
     const onData = () => setVideoReady(true);
+    const onError = () => setVideoAvailable(false);
     v.addEventListener('loadeddata', onData);
-    // kick off load only after first paint
+    v.addEventListener('error', onError, true);
     const id = requestAnimationFrame(() => {
       v.load();
       v.play().catch(() => {});
     });
     return () => {
       v.removeEventListener('loadeddata', onData);
+      v.removeEventListener('error', onError, true);
       cancelAnimationFrame(id);
     };
   }, []);
 
   return (
     <section className="relative min-h-[100svh] flex items-center overflow-hidden bg-ink-900">
-      {/* Poster (instant) */}
+      {/* Poster shows instantly, video fades in when ready */}
       <img
         src={media.heroPoster}
         alt=""
         aria-hidden
         className="absolute inset-0 w-full h-full object-cover"
       />
-      {/* Video (progressive) */}
-      <video
-        ref={videoRef}
-        muted
-        loop
-        playsInline
-        preload="none"
-        poster={media.heroPoster}
-        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
-          videoReady ? 'opacity-100' : 'opacity-0'
-        }`}
-      >
-        <source src={media.heroVideo} type="video/mp4" />
-      </video>
+      {videoAvailable && (
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="none"
+          poster={media.heroPoster}
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
+            videoReady ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <source src={media.heroVideo} type="video/mp4" />
+        </video>
+      )}
 
-      {/* Overlays for legibility + brand tint */}
+      {/* Brand-tinted overlay for legibility */}
       <div className="absolute inset-0 bg-gradient-to-b from-ink-900/85 via-ink-900/55 to-ink-900/90" />
-      <div className="absolute inset-0 bg-gradient-to-tr from-secondary-400/30 via-transparent to-primary/25" />
+      <div className="absolute inset-0 bg-gradient-to-tr from-secondary/25 via-transparent to-primary/25" />
 
       <motion.div
         variants={wrap}
         initial="hidden"
         animate="show"
-        className="relative z-10 max-w-6xl mx-auto px-5 sm:px-6 w-full text-center"
+        className="relative z-10 max-w-6xl mx-auto px-5 sm:px-6 lg:px-8 w-full text-center"
       >
         <motion.p
           variants={rise}
-          className="font-body text-primary font-semibold tracking-[0.2em] uppercase text-xs sm:text-sm mb-5"
+          className="text-primary font-semibold tracking-[0.28em] uppercase text-[10px] sm:text-xs mb-5"
         >
-          La plateforme événementielle d'Afrique francophone
+          L'Afrique bouge, Moledi la connecte
         </motion.p>
 
-        <h1 className="text-white text-[2.6rem] leading-[1.02] sm:text-6xl lg:text-7xl">
-          <Reveal text="Lancez, gérez et" delay={0.6} />
+        <h1 className="text-white text-[2.15rem] leading-[1.02] sm:text-6xl lg:text-7xl">
+          <Reveal text="Vivez l'événement" delay={0.55} />
           <br />
-          <span className="text-transparent bg-clip-text bg-gradient-orange">
-            <Reveal text="encaissez vos événements" delay={0.95} />
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-[#FFB347]">
+            <Reveal text="en un seul clic" delay={0.9} />
           </span>
         </h1>
 
         <motion.p
           variants={rise}
-          className="mt-6 sm:mt-7 text-base sm:text-xl text-white/80 font-body normal-case max-w-2xl mx-auto"
+          className="mt-6 sm:mt-7 text-sm sm:text-lg md:text-xl text-white/85 normal-case max-w-xl sm:max-w-2xl mx-auto"
         >
-          Billetterie, votes, cagnottes, crowdfunding et concours — une seule
-          plateforme pour créer votre événement, mobiliser votre communauté et
-          recevoir vos paiements par Mobile Money.
+          Billetterie, votes, cagnottes, crowdfunding, sponsoring, concours —
+          la plateforme événementielle de l'Afrique francophone, dans votre poche.
         </motion.p>
 
         <motion.div
           variants={rise}
-          className="mt-9 flex flex-row items-stretch justify-center gap-3 sm:gap-4"
+          className="mt-8 sm:mt-10 flex flex-row items-stretch justify-center gap-3 sm:gap-4 px-2"
         >
           <motion.a
             href="/inscription"
-            whileHover={{ scale: 1.04 }}
+            whileHover={{ y: -2 }}
             whileTap={{ scale: 0.97 }}
-            className="flex-1 sm:flex-initial text-center text-sm sm:text-base font-semibold px-5 sm:px-8 py-3.5 rounded-full bg-gradient-orange text-white shadow-xl shadow-primary/30"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 text-sm sm:text-base font-semibold px-5 sm:px-8 py-3 sm:py-3.5 rounded-full bg-primary text-white shadow-[0_16px_36px_-8px_rgba(255,106,0,0.55)]"
           >
-            Créer mon événement
+            Créer un événement
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="hidden sm:block">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
           </motion.a>
           <motion.a
             href="/evenements"
-            whileHover={{ scale: 1.04 }}
+            whileHover={{ y: -2 }}
             whileTap={{ scale: 0.97 }}
-            className="flex-1 sm:flex-initial text-center text-sm sm:text-base font-semibold px-5 sm:px-8 py-3.5 rounded-full bg-white/10 text-white border border-white/30 backdrop-blur-sm hover:bg-white/20 transition-colors"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 text-sm sm:text-base font-semibold px-5 sm:px-8 py-3 sm:py-3.5 rounded-full bg-white/10 text-white border border-white/30 backdrop-blur-sm"
           >
-            Parcourir les événements
+            Parcourir
           </motion.a>
-        </motion.div>
-      </motion.div>
-
-      {/* Scroll cue */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.8 }}
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10"
-      >
-        <motion.div
-          animate={{ y: [0, 8, 0] }}
-          transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}
-          className="w-6 h-10 rounded-full border-2 border-white/40 flex items-start justify-center p-1.5"
-        >
-          <span className="w-1 h-2 rounded-full bg-white/70" />
         </motion.div>
       </motion.div>
     </section>
