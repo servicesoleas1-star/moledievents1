@@ -1,11 +1,7 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
 import { universes } from '../../data/universes';
 import { media } from '../../config/media';
-
-gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
 
 const BLOCK_W = 460;
 const BLOCK_H = 600;
@@ -22,17 +18,15 @@ function positionsFor(count) {
 
 const positions = positionsFor(universes.length);
 
-const T = {
-  in: 1.0,
-  zoom1HoldIn: 0.6,
-  deepen: 0.7,
-  zoom2Hold: 1.2,
-  surface: 0.6,
-  zoom1HoldOut: 0.35,
-  out: 0.8,
-  overviewHold: 0.3,
-};
-const UNIT_VH = 44;
+// Relative weights for the sub-animations inside each transition (arbitrary
+// units — the real on-screen speed of a step is set by STEP_DURATION below,
+// GSAP just samples these proportionally within that window).
+const T = { in: 1.0, deepen: 0.7, surface: 0.6, out: 0.8 };
+
+// Real seconds for each kind of step — this is what actually gets scrubbed
+// by a single wheel notch / swipe, not the scroll distance.
+const STEP_DURATION = { in: 0.85, deepen: 0.75, out: 1.05, jump: 1.1 };
+const STEP_EASE = 'power2.inOut';
 
 function ZUIHubStory() {
   const rootRef = useRef(null);
@@ -46,17 +40,13 @@ function ZUIHubStory() {
   const flashRefs = useRef([]);
   const logoRef = useRef(null);
   const tlRef = useRef(null);
-  const labelListRef = useRef([]);
-  const [sectionVh, setSectionVh] = useState(600);
+  const stopsRef = useRef([]);
+  const currentStepRef = useRef(0);
+  const isAnimatingRef = useRef(false);
   const [inSection, setInSection] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
   useLayoutEffect(() => {
-    const perBlock =
-      T.in + T.zoom1HoldIn + T.deepen + T.zoom2Hold + T.surface + T.zoom1HoldOut + T.out;
-    const totalUnits = T.overviewHold + (perBlock + T.overviewHold) * universes.length;
-    setSectionVh(Math.round(totalUnits * UNIT_VH));
-
     const ctx = gsap.context(() => {
       const canvas = canvasRef.current;
       const viewportW = window.innerWidth;
@@ -87,49 +77,18 @@ function ZUIHubStory() {
       gsap.set(blockRefs.current, { opacity: 1, filter: 'blur(0px)' });
       gsap.set(logoRef.current, { opacity: 1, filter: 'blur(0px)' });
 
-      // A small scroll should carry the camera all the way to the next
-      // resting point (overview / zoom-1 / zoom-2) with its own eased
-      // flight — a hard scroll can still blow past several of them at
-      // once, exactly like flicking through PowerPoint slides.
-      const tl = gsap.timeline({
-        defaults: { ease: 'power3.inOut' },
-        scrollTrigger: {
-          trigger: rootRef.current,
-          start: 'top top',
-          end: 'bottom bottom',
-          scrub: 0.35,
-          invalidateOnRefresh: true,
-          snap: {
-            snapTo: 'labels',
-            duration: { min: 0.35, max: 0.95 },
-            delay: 0.06,
-            ease: 'power2.inOut',
-          },
-          onEnter: () => setInSection(true),
-          onEnterBack: () => setInSection(true),
-          onLeave: () => setInSection(false),
-          onLeaveBack: () => setInSection(false),
-          onUpdate: (self) => {
-            const time = self.animation.time();
-            const labels = labelListRef.current;
-            let current = labels[0];
-            for (const l of labels) {
-              if (l[1] <= time + 0.08) current = l;
-              else break;
-            }
-            if (!current) return;
-            setActiveIndex(current[0].startsWith('overview') ? -1 : Number(/-(\d+)$/.exec(current[0])[1]));
-          },
-        },
-      });
+      // This timeline is never scrubbed by raw scroll position. It's a fixed
+      // score of camera moves, paused, that we scrub with tl.tweenTo() one
+      // discrete step at a time — every wheel notch / swipe plays exactly
+      // one of these pre-built transitions from start to finish.
+      const tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.inOut' } });
       tlRef.current = tl;
 
-      const flyTo = (dx, dy, S, dur, ease) =>
-        tl.to(canvas, { x: -dx * S, y: -dy * S + yOffset, scale: S, duration: dur, ease: ease || 'power3.inOut' }, '>');
-      const hold = (dur) => tl.to({}, { duration: dur });
+      const flyTo = (dx, dy, S, dur, ease, pos) =>
+        tl.to(canvas, { x: -dx * S, y: -dy * S + yOffset, scale: S, duration: dur, ease: ease || 'power3.inOut' }, pos ?? '>');
 
+      const stops = ['overview-0'];
       tl.addLabel('overview-0');
-      hold(T.overviewHold);
 
       positions.forEach((p, i) => {
         const img = imgRefs.current[i];
@@ -143,8 +102,14 @@ function ZUIHubStory() {
         gsap.set(ring, { '--ring-color': ringColor });
 
         // 1. OVERVIEW → ZOOM-1  (spotlight this block, dim every other one)
+        // Anchored explicitly on tl.duration() (the timeline's true furthest
+        // point) rather than the implicit '>' shorthand — '>' resolves to
+        // "end of the most recently *inserted* tween", which for i>0 is the
+        // previous block's `others` dim-restore tween, not its actual (later)
+        // ending flyTo. Without this, this block's camera flight used to
+        // start early and visibly collide with the previous block's outro.
         let t0 = tl.duration();
-        flyTo(p.x, p.y, ZOOM_1, T.in, 'power2.out');
+        flyTo(p.x, p.y, ZOOM_1, T.in, 'power2.out', t0);
         tl.to(ring, { opacity: 1, scale: 1, duration: T.in * 0.6, ease: 'back.out(1.4)' }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.in * 0.45, ease: 'power2.out' }, `>-${T.in * 0.25}`);
         if (title) {
@@ -153,16 +118,16 @@ function ZUIHubStory() {
         // Anchored on the phase's own start time (not chained with '<') so it
         // never shifts the ring/desc/title relative-position sequence above.
         tl.to(others, { opacity: 0.15, filter: 'blur(10px)', duration: T.in, ease: 'power2.out' }, t0);
-        tl.addLabel(`zoom1-in-${i}`);
-        hold(T.zoom1HoldIn);
+        tl.addLabel(`zoom1-${i}`);
+        stops.push(`zoom1-${i}`);
 
         // 2. ZOOM-1 → ZOOM-2  (dive in with a quick colored flash)
-        t0 = tl.duration();
         tl.to(ring, { opacity: 0, scale: 1.08, duration: T.deepen * 0.35, ease: 'power2.in' });
         tl.to(desc, { opacity: 0, y: -6, duration: T.deepen * 0.3 }, '<');
         if (title) {
           tl.to(title, { scale: 1, duration: T.deepen * 0.3 }, '<');
         }
+        t0 = tl.duration();
         flyTo(p.x, p.y, ZOOM_2, T.deepen, 'power2.in');
         tl.to(img, { scale: 1.2, duration: T.deepen, ease: 'power2.in' }, '<');
         tl.to(overlay, { opacity: 1, pointerEvents: 'auto', duration: T.deepen * 0.55, ease: 'power2.inOut' }, `>-${T.deepen * 0.45}`);
@@ -172,107 +137,219 @@ function ZUIHubStory() {
           tl.to(flash, { opacity: 0, duration: T.deepen * 0.5, ease: 'power1.out' }, t0 + T.deepen * 0.25);
         }
         tl.addLabel(`zoom2-${i}`);
-        hold(T.zoom2Hold);
+        stops.push(`zoom2-${i}`);
 
-        // 3. ZOOM-2 → ZOOM-1
+        // 3+4. ZOOM-2 → OVERVIEW, one continuous dézoom with no stop at
+        // zoom-1 on the way out — matches the "big dézoom" the story needs
+        // between one universe's detail and the next universe's overview.
         tl.to(overlay, { opacity: 0, pointerEvents: 'none', duration: T.surface * 0.45, ease: 'power2.in' });
         flyTo(p.x, p.y, ZOOM_1, T.surface, 'power2.out');
         tl.to(img, { scale: 1, duration: T.surface, ease: 'power2.out' }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.surface * 0.5 }, `>-${T.surface * 0.35}`);
         tl.to(ring, { opacity: 1, scale: 1, duration: T.surface * 0.4 }, `>-${T.surface * 0.35}`);
-        tl.addLabel(`zoom1-out-${i}`);
-        hold(T.zoom1HoldOut);
 
-        // 4. ZOOM-1 → OVERVIEW  (bring every other block back into focus)
         t0 = tl.duration();
         tl.to(ring, { opacity: 0, scale: 0.92, duration: T.out * 0.4, ease: 'power2.in' });
         tl.to(desc, { opacity: 0, duration: T.out * 0.35 }, '<');
         flyTo(0, 0, OVERVIEW, T.out, 'power3.inOut');
         tl.to(others, { opacity: 1, filter: 'blur(0px)', duration: T.out, ease: 'power2.inOut' }, t0);
         tl.addLabel(`overview-${i + 1}`);
-        hold(T.overviewHold);
+        stops.push(`overview-${i + 1}`);
       });
 
-      labelListRef.current = Object.entries(tl.labels).sort((a, b) => a[1] - b[1]);
+      stopsRef.current = stops;
     }, rootRef);
     return () => ctx.revert();
   }, []);
 
+  // -- Step engine: one discrete wheel notch / swipe = exactly one step ----
+
+  const stepUniverseIndex = (stepIdx) => {
+    const name = stopsRef.current[stepIdx] || '';
+    return name.startsWith('overview') ? -1 : Number(name.split('-')[1]);
+  };
+
+  const durationFor = (fromIdx, toIdx) => {
+    if (Math.abs(toIdx - fromIdx) > 1) return STEP_DURATION.jump;
+    const fromName = stopsRef.current[fromIdx] || '';
+    if (fromName.startsWith('overview')) return STEP_DURATION.in;
+    if (fromName.startsWith('zoom1')) return STEP_DURATION.deepen;
+    return STEP_DURATION.out;
+  };
+
+  const goToStep = (rawIndex) => {
+    const stops = stopsRef.current;
+    const tl = tlRef.current;
+    if (!tl || !stops.length) return;
+    const clamped = Math.max(0, Math.min(stops.length - 1, rawIndex));
+    if (clamped === currentStepRef.current || isAnimatingRef.current) return;
+    const duration = durationFor(currentStepRef.current, clamped);
+    isAnimatingRef.current = true;
+    currentStepRef.current = clamped;
+    setActiveIndex(stepUniverseIndex(clamped));
+    tl.tweenTo(stops[clamped], {
+      duration,
+      ease: STEP_EASE,
+      onComplete: () => {
+        isAnimatingRef.current = false;
+      },
+    });
+  };
+
+  // Keep the rail's visibility in sync with whether this section currently
+  // fills the viewport (i.e. is the one the user is "inside" right now).
+  useEffect(() => {
+    let raf = null;
+    const check = () => {
+      raf = null;
+      if (!rootRef.current) return;
+      setInSection(Math.abs(rootRef.current.getBoundingClientRect().top) < 2);
+    };
+    const onScroll = () => {
+      if (raf == null) raf = requestAnimationFrame(check);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    check();
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  // Wheel: while the section fills the viewport, every notch is intercepted
+  // and advances/retreats exactly one step — except at the very first or
+  // last step, where we let the browser scroll on to the previous/next
+  // section instead of trapping the user inside the story.
+  useEffect(() => {
+    const onWheel = (e) => {
+      const stops = stopsRef.current;
+      if (!stops.length || !rootRef.current) return;
+      if (Math.abs(rootRef.current.getBoundingClientRect().top) >= 2) return;
+      const dir = e.deltaY > 4 ? 1 : e.deltaY < -4 ? -1 : 0;
+      if (dir === 0) {
+        e.preventDefault();
+        return;
+      }
+      const atStart = currentStepRef.current === 0;
+      const atEnd = currentStepRef.current === stops.length - 1;
+      if ((dir === -1 && atStart) || (dir === 1 && atEnd)) return; // release to the next/previous section
+      e.preventDefault();
+      if (isAnimatingRef.current) return;
+      goToStep(currentStepRef.current + dir);
+    };
+    window.addEventListener('wheel', onWheel, { passive: false });
+    return () => window.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Touch: same one-swipe-one-step rule, releasing to native scroll once a
+  // swipe crosses the first/last step boundary.
+  useEffect(() => {
+    let lastY = 0;
+    let released = false;
+    const onTouchStart = (e) => {
+      lastY = e.touches[0].clientY;
+      released = false;
+    };
+    const onTouchMove = (e) => {
+      const stops = stopsRef.current;
+      if (!stops.length || !rootRef.current || released) return;
+      if (Math.abs(rootRef.current.getBoundingClientRect().top) >= 2) return;
+      const y = e.touches[0].clientY;
+      const delta = lastY - y; // positive = finger moving up = scroll-down intent
+      if (Math.abs(delta) < 28) {
+        e.preventDefault();
+        return;
+      }
+      const dir = delta > 0 ? 1 : -1;
+      const atStart = currentStepRef.current === 0;
+      const atEnd = currentStepRef.current === stops.length - 1;
+      if ((dir === -1 && atStart) || (dir === 1 && atEnd)) {
+        released = true;
+        return;
+      }
+      e.preventDefault();
+      lastY = y;
+      if (isAnimatingRef.current) return;
+      goToStep(currentStepRef.current + dir);
+    };
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+    };
+  }, []);
+
   const goToLabel = (label) => {
-    const st = tlRef.current?.scrollTrigger;
-    if (!st) return;
-    const y = st.labelToScroll(label);
-    if (typeof y === 'number') {
-      gsap.to(window, { duration: 1, scrollTo: { y, autoKill: true }, ease: 'power2.inOut' });
-    }
+    const idx = stopsRef.current.indexOf(label);
+    if (idx !== -1) goToStep(idx);
   };
 
   return (
     <section
       ref={rootRef}
       data-navbar-theme="dark"
-      className="relative bg-ink-900"
-      style={{ height: `${sectionVh}vh` }}
+      className="relative bg-ink-900 h-[100svh] overflow-hidden"
       aria-label="Les 6 univers de Moledi Events"
     >
-      <div className="sticky top-0 h-[100svh] overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-ink-900 via-[#0F1E3D] to-ink-900" />
-        <div
-          className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full bg-primary/15 blur-[120px] animate-pulse"
-          style={{ willChange: 'opacity', transform: 'translateZ(0)' }}
-        />
-        <div
-          className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full bg-secondary/20 blur-[120px]"
-          style={{ transform: 'translateZ(0)' }}
-        />
-        <div
-          className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50rem] h-[50rem] rounded-full bg-primary/[0.04] blur-[80px]"
-          style={{ transform: 'translate(-50%, -50%) translateZ(0)' }}
-        />
+      <div className="absolute inset-0 bg-gradient-to-br from-ink-900 via-[#0F1E3D] to-ink-900" />
+      <div
+        className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full bg-primary/15 blur-[120px] animate-pulse"
+        style={{ willChange: 'opacity', transform: 'translateZ(0)' }}
+      />
+      <div
+        className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full bg-secondary/20 blur-[120px]"
+        style={{ transform: 'translateZ(0)' }}
+      />
+      <div
+        className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50rem] h-[50rem] rounded-full bg-primary/[0.04] blur-[80px]"
+        style={{ transform: 'translate(-50%, -50%) translateZ(0)' }}
+      />
 
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div ref={canvasRef} className="absolute left-1/2 top-1/2" style={{ willChange: 'transform' }}>
-            <CenterLogo logoRef={logoRef} />
-            {universes.map((univ, i) => (
-              <Block
-                key={univ.id}
-                univ={univ}
-                pos={positions[i]}
-                imgRef={(el) => (imgRefs.current[i] = el)}
-                descRef={(el) => (descRefs.current[i] = el)}
-                ringRef={(el) => (ringRefs.current[i] = el)}
-                blockRef={(el) => (blockRefs.current[i] = el)}
-                titleRef={(el) => (titleRefs.current[i] = el)}
-              />
-            ))}
-          </div>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div ref={canvasRef} data-testid="zui-canvas" className="absolute left-1/2 top-1/2" style={{ willChange: 'transform' }}>
+          <CenterLogo logoRef={logoRef} />
+          {universes.map((univ, i) => (
+            <Block
+              key={univ.id}
+              univ={univ}
+              pos={positions[i]}
+              imgRef={(el) => (imgRefs.current[i] = el)}
+              descRef={(el) => (descRefs.current[i] = el)}
+              ringRef={(el) => (ringRefs.current[i] = el)}
+              blockRef={(el) => (blockRefs.current[i] = el)}
+              titleRef={(el) => (titleRefs.current[i] = el)}
+            />
+          ))}
         </div>
-
-        {universes.map((univ, i) => (
-          <div
-            key={`${univ.id}-flash`}
-            ref={(el) => (flashRefs.current[i] = el)}
-            className="pointer-events-none fixed inset-0 z-20"
-            style={{ background: 'radial-gradient(circle at 50% 50%, var(--flash-color, #FF6A00) 0%, transparent 65%)' }}
-          />
-        ))}
-
-        {universes.map((univ, i) => (
-          <ImmersiveOverlay
-            key={`${univ.id}-overlay`}
-            univ={univ}
-            overlayRef={(el) => (overlayRefs.current[i] = el)}
-          />
-        ))}
-
-        <ProgressRail
-          universes={universes}
-          visible={inSection}
-          activeIndex={activeIndex}
-          onSelect={(i) => goToLabel(`zoom1-in-${i}`)}
-          onHome={() => goToLabel('overview-0')}
-        />
       </div>
+
+      {universes.map((univ, i) => (
+        <div
+          key={`${univ.id}-flash`}
+          ref={(el) => (flashRefs.current[i] = el)}
+          className="pointer-events-none fixed inset-0 z-20"
+          style={{ background: 'radial-gradient(circle at 50% 50%, var(--flash-color, #FF6A00) 0%, transparent 65%)' }}
+        />
+      ))}
+
+      {universes.map((univ, i) => (
+        <ImmersiveOverlay
+          key={`${univ.id}-overlay`}
+          univ={univ}
+          overlayRef={(el) => (overlayRefs.current[i] = el)}
+        />
+      ))}
+
+      <ProgressRail
+        universes={universes}
+        visible={inSection}
+        activeIndex={activeIndex}
+        onSelect={(i) => goToLabel(`zoom1-${i}`)}
+        onHome={() => goToLabel('overview-0')}
+      />
     </section>
   );
 }
