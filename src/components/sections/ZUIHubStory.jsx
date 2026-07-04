@@ -23,9 +23,13 @@ const positions = positionsFor(universes.length);
 // GSAP just samples these proportionally within that window).
 const T = { in: 1.0, deepen: 0.7, surface: 0.6, out: 0.8 };
 
-// Real seconds for each kind of step — this is what actually gets scrubbed
-// by a single wheel notch / swipe, not the scroll distance.
-const STEP_DURATION = { in: 0.85, deepen: 0.75, out: 1.05, jump: 1.1 };
+// Real seconds for each kind of step — a scroll is just the "play" trigger,
+// not something the camera tracks 1:1. Each value is how long that whole
+// pre-built camera move takes to play once fired, like starting a video
+// clip: slow and deliberate enough to read as a deliberate flight through
+// space rather than a snap. `outIn` is the merged "dézoom then re-zoom"
+// clip that plays as ONE uninterrupted flight between two universes.
+const STEP_DURATION = { in: 1.15, deepen: 1.0, outIn: 1.9, out: 1.3, jump: 1.4 };
 const STEP_EASE = 'power2.inOut';
 
 function ZUIHubStory() {
@@ -125,7 +129,10 @@ function ZUIHubStory() {
         tl.to(ring, { opacity: 0, scale: 1.08, duration: T.deepen * 0.35, ease: 'power2.in' });
         tl.to(desc, { opacity: 0, y: -6, duration: T.deepen * 0.3 }, '<');
         if (title) {
-          tl.to(title, { scale: 1, duration: T.deepen * 0.3 }, '<');
+          // Fully hidden (not just reset) once the immersive overlay takes
+          // over — otherwise the block's own title, blown up underneath,
+          // shows through as a stray duplicate of the overlay's big title.
+          tl.to(title, { opacity: 0, scale: 1, duration: T.deepen * 0.3 }, '<');
         }
         t0 = tl.duration();
         flyTo(p.x, p.y, ZOOM_2, T.deepen, 'power2.in');
@@ -146,6 +153,9 @@ function ZUIHubStory() {
         flyTo(p.x, p.y, ZOOM_1, T.surface, 'power2.out');
         tl.to(img, { scale: 1, duration: T.surface, ease: 'power2.out' }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.surface * 0.5 }, `>-${T.surface * 0.35}`);
+        if (title) {
+          tl.to(title, { opacity: 1, duration: T.surface * 0.5 }, '<');
+        }
         tl.to(ring, { opacity: 1, scale: 1, duration: T.surface * 0.4 }, `>-${T.surface * 0.35}`);
 
         t0 = tl.duration();
@@ -154,7 +164,13 @@ function ZUIHubStory() {
         flyTo(0, 0, OVERVIEW, T.out, 'power3.inOut');
         tl.to(others, { opacity: 1, filter: 'blur(0px)', duration: T.out, ease: 'power2.inOut' }, t0);
         tl.addLabel(`overview-${i + 1}`);
-        stops.push(`overview-${i + 1}`);
+        // Every intermediate "back to overview" is NOT its own stop — it
+        // plays straight through into the next universe's zoom-in as a
+        // single uninterrupted clip (see durationFor's "outIn" case), so a
+        // scroll never dead-ends on a bare overview between two universes.
+        // Only the very first and very last overview are real resting stops.
+        const isLast = i === positions.length - 1;
+        if (isLast) stops.push(`overview-${i + 1}`);
       });
 
       stopsRef.current = stops;
@@ -171,10 +187,13 @@ function ZUIHubStory() {
 
   const durationFor = (fromIdx, toIdx) => {
     if (Math.abs(toIdx - fromIdx) > 1) return STEP_DURATION.jump;
-    const fromName = stopsRef.current[fromIdx] || '';
-    if (fromName.startsWith('overview')) return STEP_DURATION.in;
-    if (fromName.startsWith('zoom1')) return STEP_DURATION.deepen;
-    return STEP_DURATION.out;
+    const stops = stopsRef.current;
+    const a = stops[Math.min(fromIdx, toIdx)] || '';
+    const b = stops[Math.max(fromIdx, toIdx)] || '';
+    if (a.startsWith('overview')) return STEP_DURATION.in; // overview <-> zoom-1
+    if (a.startsWith('zoom1') && b.startsWith('zoom2')) return STEP_DURATION.deepen; // zoom-1 <-> zoom-2
+    if (b.startsWith('overview')) return STEP_DURATION.out; // last zoom-2 <-> final overview
+    return STEP_DURATION.outIn; // zoom-2 of one universe <-> zoom-1 of the next (merged dézoom + re-zoom)
   };
 
   const goToStep = (rawIndex) => {
@@ -339,6 +358,7 @@ function ZUIHubStory() {
         <ImmersiveOverlay
           key={`${univ.id}-overlay`}
           univ={univ}
+          index={i}
           overlayRef={(el) => (overlayRefs.current[i] = el)}
         />
       ))}
@@ -357,7 +377,7 @@ function ZUIHubStory() {
 function ProgressRail({ universes, visible, activeIndex, onSelect, onHome }) {
   return (
     <div
-      className={`fixed z-40 right-3 sm:right-6 top-1/2 -translate-y-1/2 flex flex-col items-center gap-3 transition-opacity duration-500 ${
+      className={`hidden sm:flex fixed z-40 right-3 sm:right-6 top-1/2 -translate-y-1/2 flex-col items-center gap-3 transition-opacity duration-500 ${
         visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
       aria-hidden={!visible}
@@ -463,8 +483,41 @@ function Block({ univ, pos, imgRef, descRef, ringRef, blockRef, titleRef }) {
   );
 }
 
-function ImmersiveOverlay({ univ, overlayRef }) {
-  const cards = [univ.nested.how, univ.nested.who, univ.nested.trust];
+function IconSteps({ color }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round">
+      <path d="M4 6h4M4 12h4M4 18h4" />
+      <path d="M12 6h8M12 12h8M12 18h8" opacity="0.5" />
+    </svg>
+  );
+}
+
+function IconPeople({ color }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="8" r="3" />
+      <path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
+      <path d="M16 8.5a3 3 0 1 0 0-5.4" opacity="0.6" />
+      <path d="M18 14.3c2.6.5 4.5 2.6 4.5 5.7" opacity="0.6" />
+    </svg>
+  );
+}
+
+function IconShield({ color }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l7 3v6c0 4.5-3 7.7-7 9-4-1.3-7-4.5-7-9V6l7-3z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+function ImmersiveOverlay({ univ, overlayRef, index }) {
+  const color = RING_COLORS[index % RING_COLORS.length];
+  const steps = univ.nested.how.text.split('→').map((s) => s.trim()).filter(Boolean);
+  const tags = univ.nested.who.text.split(',').map((s) => s.trim()).filter(Boolean);
+  const trust = univ.nested.trust;
+
   return (
     <div
       ref={overlayRef}
@@ -473,41 +526,83 @@ function ImmersiveOverlay({ univ, overlayRef }) {
     >
       <div className="absolute inset-0">
         <img src={univ.image} alt="" className="w-full h-full object-cover scale-110" />
-        <div className="absolute inset-0 bg-black/75" />
+        <div className="absolute inset-0 bg-black/80" />
+        <div
+          className="absolute inset-0"
+          style={{ background: `radial-gradient(circle at 50% 0%, ${color}22, transparent 60%)` }}
+        />
       </div>
 
-      <div className="relative min-h-full flex items-center justify-center px-4 py-12 sm:py-16">
+      <div className="relative min-h-full flex items-center justify-center px-4 py-14 sm:py-20">
         <div className="w-full max-w-5xl">
-          <h3 className="font-heading text-white text-3xl sm:text-5xl normal-case text-center mb-8 sm:mb-12 drop-shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
-            {univ.label}
-          </h3>
+          <div className="text-center mb-8 sm:mb-12">
+            <span
+              className="inline-block text-[10px] sm:text-[11px] tracking-[0.3em] uppercase font-semibold mb-3 px-3 py-1 rounded-full border"
+              style={{ color, borderColor: `${color}66` }}
+            >
+              Univers Moledi Events
+            </span>
+            <h3 className="font-heading text-white text-3xl sm:text-5xl normal-case drop-shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+              {univ.label}
+            </h3>
+            <p className="mt-4 max-w-2xl mx-auto text-white/70 text-sm sm:text-base leading-relaxed normal-case">
+              {univ.definition}
+            </p>
+          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-5">
-            {cards.map((c, idx) => (
-              <div
-                key={c.title}
-                className="group rounded-2xl bg-white/[0.08] border border-white/[0.12] overflow-hidden transition-transform duration-300"
-              >
-                <div className="relative h-32 sm:h-36 overflow-hidden">
-                  <img
-                    src={c.image}
-                    alt=""
-                    loading="lazy"
-                    className="absolute inset-0 w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div
-                    className="absolute bottom-3 left-4 text-[10px] tracking-[0.2em] uppercase font-semibold"
-                    style={{ color: RING_COLORS[0] }}
-                  >
-                    {c.title}
-                  </div>
-                </div>
-                <div className="p-4 sm:p-5">
-                  <p className="text-white/90 text-sm leading-relaxed">{c.text}</p>
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
+            <div className="lg:col-span-3 rounded-3xl bg-white/[0.06] border border-white/10 p-5 sm:p-7 backdrop-blur-sm">
+              <h4 className="flex items-center gap-2 text-white font-heading text-sm sm:text-base tracking-wide uppercase mb-5">
+                <IconSteps color={color} />
+                Comment ça marche
+              </h4>
+              <ol className="space-y-0">
+                {steps.map((step, idx) => (
+                  <li key={idx} className="flex gap-3 sm:gap-4">
+                    <div className="flex flex-col items-center">
+                      <span
+                        className="flex-none w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold text-ink-900"
+                        style={{ backgroundColor: color }}
+                      >
+                        {idx + 1}
+                      </span>
+                      {idx < steps.length - 1 && <span className="w-px flex-1 min-h-[1.25rem] my-1 bg-white/15" />}
+                    </div>
+                    <p className="text-white/85 text-sm sm:text-base leading-relaxed normal-case pb-4">{step}</p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            <div className="lg:col-span-2 flex flex-col gap-4 sm:gap-6">
+              <div className="rounded-3xl bg-white/[0.06] border border-white/10 p-5 sm:p-6 backdrop-blur-sm">
+                <h4 className="flex items-center gap-2 text-white font-heading text-sm sm:text-base tracking-wide uppercase mb-4">
+                  <IconPeople color={color} />
+                  Pour qui
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {tags.map((tag, idx) => (
+                    <span
+                      key={idx}
+                      className="text-xs sm:text-sm text-white/90 px-3 py-1.5 rounded-full border border-white/15 bg-white/[0.04] normal-case"
+                    >
+                      {tag}
+                    </span>
+                  ))}
                 </div>
               </div>
-            ))}
+
+              <div
+                className="rounded-3xl p-5 sm:p-6 border backdrop-blur-sm"
+                style={{ background: `${color}14`, borderColor: `${color}40` }}
+              >
+                <h4 className="flex items-center gap-2 text-white font-heading text-sm sm:text-base tracking-wide uppercase mb-3">
+                  <IconShield color={color} />
+                  Confiance
+                </h4>
+                <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
