@@ -1,10 +1,11 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
 import { universes } from '../../data/universes';
 import { media } from '../../config/media';
 
-gsap.registerPlugin(ScrollTrigger);
+gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
 
 const BLOCK_W = 460;
 const BLOCK_H = 600;
@@ -42,7 +43,13 @@ function ZUIHubStory() {
   const overlayRefs = useRef([]);
   const blockRefs = useRef([]);
   const titleRefs = useRef([]);
+  const flashRefs = useRef([]);
+  const logoRef = useRef(null);
+  const tlRef = useRef(null);
+  const labelListRef = useRef([]);
   const [sectionVh, setSectionVh] = useState(600);
+  const [inSection, setInSection] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   useLayoutEffect(() => {
     const perBlock =
@@ -71,27 +78,57 @@ function ZUIHubStory() {
       // header never overlaps blocks that sit near the top of the canvas.
       const yOffset = navHeight / 2;
 
-      gsap.set(canvas, { x: 0, y: yOffset, scale: OVERVIEW, transformOrigin: '50% 50%', force3D: true });
-      gsap.set(imgRefs.current, { scale: 1, transformOrigin: '50% 50%', force3D: true });
+      gsap.set(canvas, { x: 0, y: yOffset, scale: OVERVIEW, transformOrigin: '50% 50%' });
+      gsap.set(imgRefs.current, { scale: 1, transformOrigin: '50% 50%' });
       gsap.set(descRefs.current, { opacity: 0, y: 12 });
       gsap.set(ringRefs.current, { opacity: 0, scale: 0.92 });
       gsap.set(overlayRefs.current, { opacity: 0, pointerEvents: 'none' });
+      gsap.set(flashRefs.current, { opacity: 0 });
+      gsap.set(blockRefs.current, { opacity: 1, filter: 'blur(0px)' });
+      gsap.set(logoRef.current, { opacity: 1, filter: 'blur(0px)' });
 
+      // A small scroll should carry the camera all the way to the next
+      // resting point (overview / zoom-1 / zoom-2) with its own eased
+      // flight — a hard scroll can still blow past several of them at
+      // once, exactly like flicking through PowerPoint slides.
       const tl = gsap.timeline({
-        defaults: { ease: 'power3.inOut', force3D: true },
+        defaults: { ease: 'power3.inOut' },
         scrollTrigger: {
           trigger: rootRef.current,
           start: 'top top',
           end: 'bottom bottom',
-          scrub: 0.4,
+          scrub: 0.35,
           invalidateOnRefresh: true,
+          snap: {
+            snapTo: 'labels',
+            duration: { min: 0.35, max: 0.95 },
+            delay: 0.06,
+            ease: 'power2.inOut',
+          },
+          onEnter: () => setInSection(true),
+          onEnterBack: () => setInSection(true),
+          onLeave: () => setInSection(false),
+          onLeaveBack: () => setInSection(false),
+          onUpdate: (self) => {
+            const time = self.animation.time();
+            const labels = labelListRef.current;
+            let current = labels[0];
+            for (const l of labels) {
+              if (l[1] <= time + 0.08) current = l;
+              else break;
+            }
+            if (!current) return;
+            setActiveIndex(current[0].startsWith('overview') ? -1 : Number(/-(\d+)$/.exec(current[0])[1]));
+          },
         },
       });
+      tlRef.current = tl;
 
       const flyTo = (dx, dy, S, dur, ease) =>
         tl.to(canvas, { x: -dx * S, y: -dy * S + yOffset, scale: S, duration: dur, ease: ease || 'power3.inOut' }, '>');
       const hold = (dur) => tl.to({}, { duration: dur });
 
+      tl.addLabel('overview-0');
       hold(T.overviewHold);
 
       positions.forEach((p, i) => {
@@ -100,19 +137,27 @@ function ZUIHubStory() {
         const ring = ringRefs.current[i];
         const overlay = overlayRefs.current[i];
         const title = titleRefs.current[i];
+        const flash = flashRefs.current[i];
         const ringColor = RING_COLORS[i % RING_COLORS.length];
+        const others = blockRefs.current.filter((_, idx) => idx !== i).concat([logoRef.current]);
         gsap.set(ring, { '--ring-color': ringColor });
 
-        // 1. OVERVIEW → ZOOM-1
+        // 1. OVERVIEW → ZOOM-1  (spotlight this block, dim every other one)
+        let t0 = tl.duration();
         flyTo(p.x, p.y, ZOOM_1, T.in, 'power2.out');
         tl.to(ring, { opacity: 1, scale: 1, duration: T.in * 0.6, ease: 'back.out(1.4)' }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.in * 0.45, ease: 'power2.out' }, `>-${T.in * 0.25}`);
         if (title) {
           tl.to(title, { scale: 1.05, duration: T.in * 0.5 }, '<');
         }
+        // Anchored on the phase's own start time (not chained with '<') so it
+        // never shifts the ring/desc/title relative-position sequence above.
+        tl.to(others, { opacity: 0.15, filter: 'blur(10px)', duration: T.in, ease: 'power2.out' }, t0);
+        tl.addLabel(`zoom1-in-${i}`);
         hold(T.zoom1HoldIn);
 
-        // 2. ZOOM-1 → ZOOM-2
+        // 2. ZOOM-1 → ZOOM-2  (dive in with a quick colored flash)
+        t0 = tl.duration();
         tl.to(ring, { opacity: 0, scale: 1.08, duration: T.deepen * 0.35, ease: 'power2.in' });
         tl.to(desc, { opacity: 0, y: -6, duration: T.deepen * 0.3 }, '<');
         if (title) {
@@ -121,6 +166,12 @@ function ZUIHubStory() {
         flyTo(p.x, p.y, ZOOM_2, T.deepen, 'power2.in');
         tl.to(img, { scale: 1.2, duration: T.deepen, ease: 'power2.in' }, '<');
         tl.to(overlay, { opacity: 1, pointerEvents: 'auto', duration: T.deepen * 0.55, ease: 'power2.inOut' }, `>-${T.deepen * 0.45}`);
+        if (flash) {
+          tl.set(flash, { '--flash-color': ringColor }, t0);
+          tl.to(flash, { opacity: 0.55, duration: T.deepen * 0.25, ease: 'power1.in' }, t0);
+          tl.to(flash, { opacity: 0, duration: T.deepen * 0.5, ease: 'power1.out' }, t0 + T.deepen * 0.25);
+        }
+        tl.addLabel(`zoom2-${i}`);
         hold(T.zoom2Hold);
 
         // 3. ZOOM-2 → ZOOM-1
@@ -129,17 +180,32 @@ function ZUIHubStory() {
         tl.to(img, { scale: 1, duration: T.surface, ease: 'power2.out' }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.surface * 0.5 }, `>-${T.surface * 0.35}`);
         tl.to(ring, { opacity: 1, scale: 1, duration: T.surface * 0.4 }, `>-${T.surface * 0.35}`);
+        tl.addLabel(`zoom1-out-${i}`);
         hold(T.zoom1HoldOut);
 
-        // 4. ZOOM-1 → OVERVIEW
+        // 4. ZOOM-1 → OVERVIEW  (bring every other block back into focus)
+        t0 = tl.duration();
         tl.to(ring, { opacity: 0, scale: 0.92, duration: T.out * 0.4, ease: 'power2.in' });
         tl.to(desc, { opacity: 0, duration: T.out * 0.35 }, '<');
         flyTo(0, 0, OVERVIEW, T.out, 'power3.inOut');
+        tl.to(others, { opacity: 1, filter: 'blur(0px)', duration: T.out, ease: 'power2.inOut' }, t0);
+        tl.addLabel(`overview-${i + 1}`);
         hold(T.overviewHold);
       });
+
+      labelListRef.current = Object.entries(tl.labels).sort((a, b) => a[1] - b[1]);
     }, rootRef);
     return () => ctx.revert();
   }, []);
+
+  const goToLabel = (label) => {
+    const st = tlRef.current?.scrollTrigger;
+    if (!st) return;
+    const y = st.labelToScroll(label);
+    if (typeof y === 'number') {
+      gsap.to(window, { duration: 1, scrollTo: { y, autoKill: true }, ease: 'power2.inOut' });
+    }
+  };
 
   return (
     <section
@@ -166,7 +232,7 @@ function ZUIHubStory() {
 
         <div className="absolute inset-0 flex items-center justify-center">
           <div ref={canvasRef} className="absolute left-1/2 top-1/2" style={{ willChange: 'transform' }}>
-            <CenterLogo />
+            <CenterLogo logoRef={logoRef} />
             {universes.map((univ, i) => (
               <Block
                 key={univ.id}
@@ -183,21 +249,78 @@ function ZUIHubStory() {
         </div>
 
         {universes.map((univ, i) => (
+          <div
+            key={`${univ.id}-flash`}
+            ref={(el) => (flashRefs.current[i] = el)}
+            className="pointer-events-none fixed inset-0 z-20"
+            style={{ background: 'radial-gradient(circle at 50% 50%, var(--flash-color, #FF6A00) 0%, transparent 65%)' }}
+          />
+        ))}
+
+        {universes.map((univ, i) => (
           <ImmersiveOverlay
             key={`${univ.id}-overlay`}
             univ={univ}
             overlayRef={(el) => (overlayRefs.current[i] = el)}
           />
         ))}
+
+        <ProgressRail
+          universes={universes}
+          visible={inSection}
+          activeIndex={activeIndex}
+          onSelect={(i) => goToLabel(`zoom1-in-${i}`)}
+          onHome={() => goToLabel('overview-0')}
+        />
       </div>
     </section>
   );
 }
 
-function CenterLogo() {
+function ProgressRail({ universes, visible, activeIndex, onSelect, onHome }) {
+  return (
+    <div
+      className={`fixed z-40 right-3 sm:right-6 top-1/2 -translate-y-1/2 flex flex-col items-center gap-3 transition-opacity duration-500 ${
+        visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      }`}
+      aria-hidden={!visible}
+    >
+      <button
+        type="button"
+        onClick={onHome}
+        aria-label="Vue d'ensemble"
+        className={`w-2.5 h-2.5 rounded-full border transition-all duration-300 ${
+          activeIndex === -1 ? 'bg-white border-white scale-125' : 'bg-transparent border-white/40 hover:border-white/80'
+        }`}
+      />
+      <span className="w-px h-4 bg-white/20" />
+      {universes.map((univ, i) => (
+        <button
+          key={univ.id}
+          type="button"
+          onClick={() => onSelect(i)}
+          aria-label={univ.label}
+          className="group relative flex items-center justify-center w-4 h-4"
+        >
+          <span
+            className={`w-2.5 h-2.5 rounded-full border transition-all duration-300 ${
+              activeIndex === i ? 'scale-125' : 'bg-transparent border-white/40 group-hover:border-white/80'
+            }`}
+            style={activeIndex === i ? { backgroundColor: RING_COLORS[i % RING_COLORS.length], borderColor: RING_COLORS[i % RING_COLORS.length] } : undefined}
+          />
+          <span className="pointer-events-none absolute right-6 whitespace-nowrap text-[11px] font-semibold text-white/90 bg-ink-900/80 backdrop-blur-sm px-2.5 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            {univ.label}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CenterLogo({ logoRef }) {
   const [src, setSrc] = useState(media.logoLight);
   return (
-    <div className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: 0, top: 0 }}>
+    <div ref={logoRef} className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: 0, top: 0, willChange: 'opacity, filter' }}>
       <div className="relative w-28 h-28 sm:w-36 sm:h-36 flex items-center justify-center">
         <div className="absolute inset-[-20px] rounded-full bg-primary/20 blur-3xl animate-pulse" />
         <div className="absolute inset-[-8px] rounded-full border border-primary/20 animate-[spin_20s_linear_infinite]" />
@@ -222,6 +345,7 @@ function Block({ univ, pos, imgRef, descRef, ringRef, blockRef, titleRef }) {
         top: 0,
         width: BLOCK_W,
         transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))`,
+        willChange: 'opacity, filter',
       }}
     >
       <div
