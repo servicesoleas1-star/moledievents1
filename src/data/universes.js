@@ -33,7 +33,7 @@ export const universes = [
       trust: {
         title: 'Confiance',
         text:
-          'Procès-verbal certifié en fin de scrutin, résultats infalsifiables, historique conservé.',
+          "Procès-verbal certifié en fin de scrutin, résultats infalsifiables, historique conservé. Chaque vote est horodaté et traçable, pour un résultat que personne ne peut contester.",
         image: u('1450101499163-c8848c66ca85'),
       },
     },
@@ -59,7 +59,7 @@ export const universes = [
       trust: {
         title: 'Confiance',
         text:
-          "Contrôle d'accès par QR code à l'entrée, suivi des ventes en temps réel, aucun risque de fraude sur les billets.",
+          "Contrôle d'accès par QR code à l'entrée, suivi des ventes en temps réel, aucun risque de fraude sur les billets. Chaque billet est unique et ne peut être scanné qu'une seule fois.",
         image: u('1533174072545-7a4b6ad7a6c3'),
       },
     },
@@ -86,7 +86,7 @@ export const universes = [
       trust: {
         title: 'Confiance',
         text:
-          "Reçu automatique, montant collecté visible en temps réel, reversement sécurisé à l'organisateur.",
+          "Reçu automatique, montant collecté visible en temps réel, reversement sécurisé à l'organisateur. Chaque don est enregistré et consultable à tout moment par les donateurs.",
         image: u('1450101499163-c8848c66ca85'),
       },
     },
@@ -112,7 +112,7 @@ export const universes = [
       trust: {
         title: 'Confiance',
         text:
-          'Transparence sur le montant collecté, mises à jour du porteur de projet, traçabilité des contributions.',
+          'Transparence sur le montant collecté, mises à jour du porteur de projet, traçabilité des contributions. Les fonds ne sont reversés que si l’objectif ou les paliers annoncés sont respectés.',
         image: u('1454165804606-c3d57bc86b40'),
       },
     },
@@ -139,7 +139,7 @@ export const universes = [
       trust: {
         title: 'Confiance',
         text:
-          'Dossiers vérifiés, statistiques d’audience fiables, mise en relation encadrée par la plateforme.',
+          'Dossiers vérifiés, statistiques d’audience fiables, mise en relation encadrée par la plateforme. Aucun engagement financier n’est pris sans validation des deux parties.',
         image: u('1450101499163-c8848c66ca85'),
       },
     },
@@ -166,7 +166,7 @@ export const universes = [
       trust: {
         title: 'Confiance',
         text:
-          'Algorithme de tirage vérifiable, procès-verbal de tirage, aucune manipulation possible.',
+          'Algorithme de tirage vérifiable, procès-verbal de tirage, aucune manipulation possible. Le gagnant est désigné publiquement, à l’abri de toute contestation.',
         image: u('1450101499163-c8848c66ca85'),
       },
     },

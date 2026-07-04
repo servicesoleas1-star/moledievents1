@@ -1,10 +1,7 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { universes } from '../../data/universes';
 import { media } from '../../config/media';
-
-gsap.registerPlugin(ScrollTrigger);
 
 const BLOCK_W = 460;
 const BLOCK_H = 600;
@@ -21,17 +18,30 @@ function positionsFor(count) {
 
 const positions = positionsFor(universes.length);
 
-const T = {
-  in: 1.0,
-  zoom1HoldIn: 0.6,
-  deepen: 0.7,
-  zoom2Hold: 1.2,
-  surface: 0.6,
-  zoom1HoldOut: 0.35,
-  out: 0.8,
-  overviewHold: 0.3,
-};
-const UNIT_VH = 44;
+// Relative weights for the sub-animations inside each transition (arbitrary
+// units — the real on-screen speed of a step is set by STEP_DURATION below,
+// GSAP just samples these proportionally within that window).
+const T = { in: 1.0, deepen: 0.7, surface: 0.6, out: 0.8 };
+
+// Real seconds for each kind of step — a scroll is just the "play" trigger,
+// not something the camera tracks 1:1. Each value is how long that whole
+// pre-built camera move takes to play once fired, like starting a video
+// clip. Slowed down deliberately: the longer the flight through space, the
+// more it reads as immersive travel rather than a snap. `outIn` is the
+// merged "dézoom then re-zoom" clip that plays as ONE uninterrupted flight
+// between two universes, so it gets the longest budget of all.
+const STEP_DURATION = { in: 1.7, deepen: 1.55, outIn: 3.0, out: 1.9, jump: 1.7 };
+const STEP_EASE = 'power2.inOut';
+
+// A different "camera personality" per universe so the zooms don't all feel
+// identical — cycled by universe index. Only eases/overshoot amounts vary
+// (never the tween count or position anchors), so this can't reintroduce
+// timing conflicts between blocks.
+const FLIGHT_STYLES = [
+  { inEase: 'power2.out', deepenEase: 'power2.in', ringEase: 'back.out(1.4)', imgPunch: 1.2 },
+  { inEase: 'power1.inOut', deepenEase: 'power1.inOut', ringEase: 'elastic.out(1,0.65)', imgPunch: 1.14 },
+  { inEase: 'back.out(1.05)', deepenEase: 'power3.in', ringEase: 'back.out(2)', imgPunch: 1.28 },
+];
 
 function ZUIHubStory() {
   const rootRef = useRef(null);
@@ -42,14 +52,16 @@ function ZUIHubStory() {
   const overlayRefs = useRef([]);
   const blockRefs = useRef([]);
   const titleRefs = useRef([]);
-  const [sectionVh, setSectionVh] = useState(600);
+  const flashRefs = useRef([]);
+  const logoRef = useRef(null);
+  const tlRef = useRef(null);
+  const stopsRef = useRef([]);
+  const currentStepRef = useRef(0);
+  const isAnimatingRef = useRef(false);
+  const [inSection, setInSection] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   useLayoutEffect(() => {
-    const perBlock =
-      T.in + T.zoom1HoldIn + T.deepen + T.zoom2Hold + T.surface + T.zoom1HoldOut + T.out;
-    const totalUnits = T.overviewHold + (perBlock + T.overviewHold) * universes.length;
-    setSectionVh(Math.round(totalUnits * UNIT_VH));
-
     const ctx = gsap.context(() => {
       const canvas = canvasRef.current;
       const viewportW = window.innerWidth;
@@ -71,28 +83,27 @@ function ZUIHubStory() {
       // header never overlaps blocks that sit near the top of the canvas.
       const yOffset = navHeight / 2;
 
-      gsap.set(canvas, { x: 0, y: yOffset, scale: OVERVIEW, transformOrigin: '50% 50%', force3D: true });
-      gsap.set(imgRefs.current, { scale: 1, transformOrigin: '50% 50%', force3D: true });
+      gsap.set(canvas, { x: 0, y: yOffset, scale: OVERVIEW, transformOrigin: '50% 50%' });
+      gsap.set(imgRefs.current, { scale: 1, transformOrigin: '50% 50%' });
       gsap.set(descRefs.current, { opacity: 0, y: 12 });
       gsap.set(ringRefs.current, { opacity: 0, scale: 0.92 });
       gsap.set(overlayRefs.current, { opacity: 0, pointerEvents: 'none' });
+      gsap.set(flashRefs.current, { opacity: 0 });
+      gsap.set(blockRefs.current, { opacity: 1, filter: 'blur(0px)' });
+      gsap.set(logoRef.current, { opacity: 1, filter: 'blur(0px)' });
 
-      const tl = gsap.timeline({
-        defaults: { ease: 'power3.inOut', force3D: true },
-        scrollTrigger: {
-          trigger: rootRef.current,
-          start: 'top top',
-          end: 'bottom bottom',
-          scrub: 0.4,
-          invalidateOnRefresh: true,
-        },
-      });
+      // This timeline is never scrubbed by raw scroll position. It's a fixed
+      // score of camera moves, paused, that we scrub with tl.tweenTo() one
+      // discrete step at a time — every wheel notch / swipe plays exactly
+      // one of these pre-built transitions from start to finish.
+      const tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.inOut' } });
+      tlRef.current = tl;
 
-      const flyTo = (dx, dy, S, dur, ease) =>
-        tl.to(canvas, { x: -dx * S, y: -dy * S + yOffset, scale: S, duration: dur, ease: ease || 'power3.inOut' }, '>');
-      const hold = (dur) => tl.to({}, { duration: dur });
+      const flyTo = (dx, dy, S, dur, ease, pos) =>
+        tl.to(canvas, { x: -dx * S, y: -dy * S + yOffset, scale: S, duration: dur, ease: ease || 'power3.inOut' }, pos ?? '>');
 
-      hold(T.overviewHold);
+      const stops = ['overview-0'];
+      tl.addLabel('overview-0');
 
       positions.forEach((p, i) => {
         const img = imgRefs.current[i];
@@ -100,104 +111,325 @@ function ZUIHubStory() {
         const ring = ringRefs.current[i];
         const overlay = overlayRefs.current[i];
         const title = titleRefs.current[i];
+        const flash = flashRefs.current[i];
         const ringColor = RING_COLORS[i % RING_COLORS.length];
+        const others = blockRefs.current.filter((_, idx) => idx !== i).concat([logoRef.current]);
+        const style = FLIGHT_STYLES[i % FLIGHT_STYLES.length];
         gsap.set(ring, { '--ring-color': ringColor });
 
-        // 1. OVERVIEW → ZOOM-1
-        flyTo(p.x, p.y, ZOOM_1, T.in, 'power2.out');
-        tl.to(ring, { opacity: 1, scale: 1, duration: T.in * 0.6, ease: 'back.out(1.4)' }, '<');
+        // 1. OVERVIEW → ZOOM-1  (spotlight this block, dim every other one)
+        // Anchored explicitly on tl.duration() (the timeline's true furthest
+        // point) rather than the implicit '>' shorthand — '>' resolves to
+        // "end of the most recently *inserted* tween", which for i>0 is the
+        // previous block's `others` dim-restore tween, not its actual (later)
+        // ending flyTo. Without this, this block's camera flight used to
+        // start early and visibly collide with the previous block's outro.
+        let t0 = tl.duration();
+        flyTo(p.x, p.y, ZOOM_1, T.in, style.inEase, t0);
+        tl.to(ring, { opacity: 1, scale: 1, duration: T.in * 0.6, ease: style.ringEase }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.in * 0.45, ease: 'power2.out' }, `>-${T.in * 0.25}`);
         if (title) {
           tl.to(title, { scale: 1.05, duration: T.in * 0.5 }, '<');
         }
-        hold(T.zoom1HoldIn);
+        // Anchored on the phase's own start time (not chained with '<') so it
+        // never shifts the ring/desc/title relative-position sequence above.
+        tl.to(others, { opacity: 0.15, filter: 'blur(10px)', duration: T.in, ease: 'power2.out' }, t0);
+        tl.addLabel(`zoom1-${i}`);
+        stops.push(`zoom1-${i}`);
 
-        // 2. ZOOM-1 → ZOOM-2
+        // 2. ZOOM-1 → ZOOM-2  (dive in with a quick colored flash)
         tl.to(ring, { opacity: 0, scale: 1.08, duration: T.deepen * 0.35, ease: 'power2.in' });
         tl.to(desc, { opacity: 0, y: -6, duration: T.deepen * 0.3 }, '<');
         if (title) {
-          tl.to(title, { scale: 1, duration: T.deepen * 0.3 }, '<');
+          // Fully hidden (not just reset) once the immersive overlay takes
+          // over — otherwise the block's own title, blown up underneath,
+          // shows through as a stray duplicate of the overlay's big title.
+          tl.to(title, { opacity: 0, scale: 1, duration: T.deepen * 0.3 }, '<');
         }
-        flyTo(p.x, p.y, ZOOM_2, T.deepen, 'power2.in');
-        tl.to(img, { scale: 1.2, duration: T.deepen, ease: 'power2.in' }, '<');
+        t0 = tl.duration();
+        flyTo(p.x, p.y, ZOOM_2, T.deepen, style.deepenEase);
+        tl.to(img, { scale: style.imgPunch, duration: T.deepen, ease: style.deepenEase }, '<');
         tl.to(overlay, { opacity: 1, pointerEvents: 'auto', duration: T.deepen * 0.55, ease: 'power2.inOut' }, `>-${T.deepen * 0.45}`);
-        hold(T.zoom2Hold);
+        if (flash) {
+          tl.set(flash, { '--flash-color': ringColor }, t0);
+          tl.to(flash, { opacity: 0.55, duration: T.deepen * 0.25, ease: 'power1.in' }, t0);
+          tl.to(flash, { opacity: 0, duration: T.deepen * 0.5, ease: 'power1.out' }, t0 + T.deepen * 0.25);
+        }
+        tl.addLabel(`zoom2-${i}`);
+        stops.push(`zoom2-${i}`);
 
-        // 3. ZOOM-2 → ZOOM-1
+        // 3+4. ZOOM-2 → OVERVIEW, one continuous dézoom with no stop at
+        // zoom-1 on the way out — matches the "big dézoom" the story needs
+        // between one universe's detail and the next universe's overview.
         tl.to(overlay, { opacity: 0, pointerEvents: 'none', duration: T.surface * 0.45, ease: 'power2.in' });
         flyTo(p.x, p.y, ZOOM_1, T.surface, 'power2.out');
         tl.to(img, { scale: 1, duration: T.surface, ease: 'power2.out' }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.surface * 0.5 }, `>-${T.surface * 0.35}`);
+        if (title) {
+          tl.to(title, { opacity: 1, duration: T.surface * 0.5 }, '<');
+        }
         tl.to(ring, { opacity: 1, scale: 1, duration: T.surface * 0.4 }, `>-${T.surface * 0.35}`);
-        hold(T.zoom1HoldOut);
 
-        // 4. ZOOM-1 → OVERVIEW
+        t0 = tl.duration();
         tl.to(ring, { opacity: 0, scale: 0.92, duration: T.out * 0.4, ease: 'power2.in' });
         tl.to(desc, { opacity: 0, duration: T.out * 0.35 }, '<');
         flyTo(0, 0, OVERVIEW, T.out, 'power3.inOut');
-        hold(T.overviewHold);
+        tl.to(others, { opacity: 1, filter: 'blur(0px)', duration: T.out, ease: 'power2.inOut' }, t0);
+        tl.addLabel(`overview-${i + 1}`);
+        // Every intermediate "back to overview" is NOT its own stop — it
+        // plays straight through into the next universe's zoom-in as a
+        // single uninterrupted clip (see durationFor's "outIn" case), so a
+        // scroll never dead-ends on a bare overview between two universes.
+        // Only the very first and very last overview are real resting stops.
+        const isLast = i === positions.length - 1;
+        if (isLast) stops.push(`overview-${i + 1}`);
       });
+
+      stopsRef.current = stops;
     }, rootRef);
     return () => ctx.revert();
   }, []);
+
+  // -- Step engine: one discrete wheel notch / swipe = exactly one step ----
+
+  const stepUniverseIndex = (stepIdx) => {
+    const name = stopsRef.current[stepIdx] || '';
+    return name.startsWith('overview') ? -1 : Number(name.split('-')[1]);
+  };
+
+  const durationFor = (fromIdx, toIdx) => {
+    if (Math.abs(toIdx - fromIdx) > 1) return STEP_DURATION.jump;
+    const stops = stopsRef.current;
+    const a = stops[Math.min(fromIdx, toIdx)] || '';
+    const b = stops[Math.max(fromIdx, toIdx)] || '';
+    if (a.startsWith('overview')) return STEP_DURATION.in; // overview <-> zoom-1
+    if (a.startsWith('zoom1') && b.startsWith('zoom2')) return STEP_DURATION.deepen; // zoom-1 <-> zoom-2
+    if (b.startsWith('overview')) return STEP_DURATION.out; // last zoom-2 <-> final overview
+    return STEP_DURATION.outIn; // zoom-2 of one universe <-> zoom-1 of the next (merged dézoom + re-zoom)
+  };
+
+  const goToStep = (rawIndex) => {
+    const stops = stopsRef.current;
+    const tl = tlRef.current;
+    if (!tl || !stops.length) return;
+    const clamped = Math.max(0, Math.min(stops.length - 1, rawIndex));
+    if (clamped === currentStepRef.current || isAnimatingRef.current) return;
+    const duration = durationFor(currentStepRef.current, clamped);
+    isAnimatingRef.current = true;
+    currentStepRef.current = clamped;
+    setActiveIndex(stepUniverseIndex(clamped));
+    tl.tweenTo(stops[clamped], {
+      duration,
+      ease: STEP_EASE,
+      onComplete: () => {
+        isAnimatingRef.current = false;
+      },
+    });
+  };
+
+  // Keep the rail's visibility in sync with whether this section currently
+  // fills the viewport (i.e. is the one the user is "inside" right now).
+  useEffect(() => {
+    let raf = null;
+    const check = () => {
+      raf = null;
+      if (!rootRef.current) return;
+      setInSection(Math.abs(rootRef.current.getBoundingClientRect().top) < 2);
+    };
+    const onScroll = () => {
+      if (raf == null) raf = requestAnimationFrame(check);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    check();
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  // Wheel: while the section fills the viewport, every notch is intercepted
+  // and advances/retreats exactly one step — except at the very first or
+  // last step, where we let the browser scroll on to the previous/next
+  // section instead of trapping the user inside the story.
+  useEffect(() => {
+    const onWheel = (e) => {
+      const stops = stopsRef.current;
+      if (!stops.length || !rootRef.current) return;
+      if (Math.abs(rootRef.current.getBoundingClientRect().top) >= 2) return;
+      const dir = e.deltaY > 4 ? 1 : e.deltaY < -4 ? -1 : 0;
+      if (dir === 0) {
+        e.preventDefault();
+        return;
+      }
+      const atStart = currentStepRef.current === 0;
+      const atEnd = currentStepRef.current === stops.length - 1;
+      if ((dir === -1 && atStart) || (dir === 1 && atEnd)) return; // release to the next/previous section
+      e.preventDefault();
+      if (isAnimatingRef.current) return;
+      goToStep(currentStepRef.current + dir);
+    };
+    window.addEventListener('wheel', onWheel, { passive: false });
+    return () => window.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Touch: same one-swipe-one-step rule, releasing to native scroll once a
+  // swipe crosses the first/last step boundary.
+  useEffect(() => {
+    let lastY = 0;
+    let released = false;
+    const onTouchStart = (e) => {
+      lastY = e.touches[0].clientY;
+      released = false;
+    };
+    const onTouchMove = (e) => {
+      const stops = stopsRef.current;
+      if (!stops.length || !rootRef.current || released) return;
+      if (Math.abs(rootRef.current.getBoundingClientRect().top) >= 2) return;
+      const y = e.touches[0].clientY;
+      const delta = lastY - y; // positive = finger moving up = scroll-down intent
+      if (Math.abs(delta) < 28) {
+        e.preventDefault();
+        return;
+      }
+      const dir = delta > 0 ? 1 : -1;
+      const atStart = currentStepRef.current === 0;
+      const atEnd = currentStepRef.current === stops.length - 1;
+      if ((dir === -1 && atStart) || (dir === 1 && atEnd)) {
+        released = true;
+        return;
+      }
+      e.preventDefault();
+      lastY = y;
+      if (isAnimatingRef.current) return;
+      goToStep(currentStepRef.current + dir);
+    };
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+    };
+  }, []);
+
+  const goToLabel = (label) => {
+    const idx = stopsRef.current.indexOf(label);
+    if (idx !== -1) goToStep(idx);
+  };
 
   return (
     <section
       ref={rootRef}
       data-navbar-theme="dark"
-      className="relative bg-ink-900"
-      style={{ height: `${sectionVh}vh` }}
+      className="relative bg-ink-900 h-[100svh] overflow-hidden"
       aria-label="Les 6 univers de Moledi Events"
     >
-      <div className="sticky top-0 h-[100svh] overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-ink-900 via-[#0F1E3D] to-ink-900" />
-        <div
-          className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full bg-primary/15 blur-[120px] animate-pulse"
-          style={{ willChange: 'opacity', transform: 'translateZ(0)' }}
-        />
-        <div
-          className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full bg-secondary/20 blur-[120px]"
-          style={{ transform: 'translateZ(0)' }}
-        />
-        <div
-          className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50rem] h-[50rem] rounded-full bg-primary/[0.04] blur-[80px]"
-          style={{ transform: 'translate(-50%, -50%) translateZ(0)' }}
-        />
+      <div className="absolute inset-0 bg-gradient-to-br from-ink-900 via-[#0F1E3D] to-ink-900" />
+      <div
+        className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full bg-primary/15 blur-[120px] animate-pulse"
+        style={{ willChange: 'opacity', transform: 'translateZ(0)' }}
+      />
+      <div
+        className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full bg-secondary/20 blur-[120px]"
+        style={{ transform: 'translateZ(0)' }}
+      />
+      <div
+        className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50rem] h-[50rem] rounded-full bg-primary/[0.04] blur-[80px]"
+        style={{ transform: 'translate(-50%, -50%) translateZ(0)' }}
+      />
 
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div ref={canvasRef} className="absolute left-1/2 top-1/2" style={{ willChange: 'transform' }}>
-            <CenterLogo />
-            {universes.map((univ, i) => (
-              <Block
-                key={univ.id}
-                univ={univ}
-                pos={positions[i]}
-                imgRef={(el) => (imgRefs.current[i] = el)}
-                descRef={(el) => (descRefs.current[i] = el)}
-                ringRef={(el) => (ringRefs.current[i] = el)}
-                blockRef={(el) => (blockRefs.current[i] = el)}
-                titleRef={(el) => (titleRefs.current[i] = el)}
-              />
-            ))}
-          </div>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div ref={canvasRef} data-testid="zui-canvas" className="absolute left-1/2 top-1/2" style={{ willChange: 'transform' }}>
+          <CenterLogo logoRef={logoRef} />
+          {universes.map((univ, i) => (
+            <Block
+              key={univ.id}
+              univ={univ}
+              pos={positions[i]}
+              imgRef={(el) => (imgRefs.current[i] = el)}
+              descRef={(el) => (descRefs.current[i] = el)}
+              ringRef={(el) => (ringRefs.current[i] = el)}
+              blockRef={(el) => (blockRefs.current[i] = el)}
+              titleRef={(el) => (titleRefs.current[i] = el)}
+            />
+          ))}
         </div>
-
-        {universes.map((univ, i) => (
-          <ImmersiveOverlay
-            key={`${univ.id}-overlay`}
-            univ={univ}
-            overlayRef={(el) => (overlayRefs.current[i] = el)}
-          />
-        ))}
       </div>
+
+      {universes.map((univ, i) => (
+        <div
+          key={`${univ.id}-flash`}
+          ref={(el) => (flashRefs.current[i] = el)}
+          className="pointer-events-none fixed inset-0 z-20"
+          style={{ background: 'radial-gradient(circle at 50% 50%, var(--flash-color, #FF6A00) 0%, transparent 65%)' }}
+        />
+      ))}
+
+      {universes.map((univ, i) => (
+        <ImmersiveOverlay
+          key={`${univ.id}-overlay`}
+          univ={univ}
+          index={i}
+          overlayRef={(el) => (overlayRefs.current[i] = el)}
+        />
+      ))}
+
+      <ProgressRail
+        universes={universes}
+        visible={inSection}
+        activeIndex={activeIndex}
+        onSelect={(i) => goToLabel(`zoom1-${i}`)}
+        onHome={() => goToLabel('overview-0')}
+      />
     </section>
   );
 }
 
-function CenterLogo() {
+function ProgressRail({ universes, visible, activeIndex, onSelect, onHome }) {
+  return (
+    <div
+      className={`hidden sm:flex fixed z-40 right-3 sm:right-6 top-1/2 -translate-y-1/2 flex-col items-center gap-3 transition-opacity duration-500 ${
+        visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      }`}
+      aria-hidden={!visible}
+    >
+      <button
+        type="button"
+        onClick={onHome}
+        aria-label="Vue d'ensemble"
+        className={`w-2.5 h-2.5 rounded-full border transition-all duration-300 ${
+          activeIndex === -1 ? 'bg-white border-white scale-125' : 'bg-transparent border-white/40 hover:border-white/80'
+        }`}
+      />
+      <span className="w-px h-4 bg-white/20" />
+      {universes.map((univ, i) => (
+        <button
+          key={univ.id}
+          type="button"
+          onClick={() => onSelect(i)}
+          aria-label={univ.label}
+          className="group relative flex items-center justify-center w-4 h-4"
+        >
+          <span
+            className={`w-2.5 h-2.5 rounded-full border transition-all duration-300 ${
+              activeIndex === i ? 'scale-125' : 'bg-transparent border-white/40 group-hover:border-white/80'
+            }`}
+            style={activeIndex === i ? { backgroundColor: RING_COLORS[i % RING_COLORS.length], borderColor: RING_COLORS[i % RING_COLORS.length] } : undefined}
+          />
+          <span className="pointer-events-none absolute right-6 whitespace-nowrap text-[11px] font-semibold text-white/90 bg-ink-900/80 backdrop-blur-sm px-2.5 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            {univ.label}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CenterLogo({ logoRef }) {
   const [src, setSrc] = useState(media.logoLight);
   return (
-    <div className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: 0, top: 0 }}>
+    <div ref={logoRef} className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: 0, top: 0, willChange: 'opacity, filter' }}>
       <div className="relative w-28 h-28 sm:w-36 sm:h-36 flex items-center justify-center">
         <div className="absolute inset-[-20px] rounded-full bg-primary/20 blur-3xl animate-pulse" />
         <div className="absolute inset-[-8px] rounded-full border border-primary/20 animate-[spin_20s_linear_infinite]" />
@@ -222,6 +454,7 @@ function Block({ univ, pos, imgRef, descRef, ringRef, blockRef, titleRef }) {
         top: 0,
         width: BLOCK_W,
         transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))`,
+        willChange: 'opacity, filter',
       }}
     >
       <div
@@ -262,8 +495,131 @@ function Block({ univ, pos, imgRef, descRef, ringRef, blockRef, titleRef }) {
   );
 }
 
-function ImmersiveOverlay({ univ, overlayRef }) {
-  const cards = [univ.nested.how, univ.nested.who, univ.nested.trust];
+function IconSteps({ color }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round">
+      <path d="M4 6h4M4 12h4M4 18h4" />
+      <path d="M12 6h8M12 12h8M12 18h8" opacity="0.5" />
+    </svg>
+  );
+}
+
+function IconPeople({ color }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="8" r="3" />
+      <path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
+      <path d="M16 8.5a3 3 0 1 0 0-5.4" opacity="0.6" />
+      <path d="M18 14.3c2.6.5 4.5 2.6 4.5 5.7" opacity="0.6" />
+    </svg>
+  );
+}
+
+function IconShield({ color }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l7 3v6c0 4.5-3 7.7-7 9-4-1.3-7-4.5-7-9V6l7-3z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+function StepsWidget({ steps, color, layout }) {
+  if (layout === 'row') {
+    return (
+      <div className="flex flex-col sm:flex-row gap-5 sm:gap-4">
+        {steps.map((step, idx) => (
+          <div key={idx} className="flex-1 flex sm:flex-col items-start gap-3 sm:gap-4">
+            <span
+              className="flex-none w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-ink-900"
+              style={{ backgroundColor: color }}
+            >
+              {idx + 1}
+            </span>
+            <p className="text-white/85 text-sm sm:text-base leading-relaxed normal-case pt-1 sm:pt-0">{step}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <ol>
+      {steps.map((step, idx) => (
+        <li key={idx} className="flex gap-3 sm:gap-4">
+          <div className="flex flex-col items-center">
+            <span
+              className="flex-none w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold text-ink-900"
+              style={{ backgroundColor: color }}
+            >
+              {idx + 1}
+            </span>
+            {idx < steps.length - 1 && <span className="w-px flex-1 min-h-[1.25rem] my-1 bg-white/15" />}
+          </div>
+          <p className="text-white/85 text-sm sm:text-base leading-relaxed normal-case pb-4">{step}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function TagsWidget({ tags }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {tags.map((tag, idx) => (
+        <span
+          key={idx}
+          className="text-xs sm:text-sm text-white/90 px-3 py-1.5 rounded-full border border-white/15 bg-white/[0.04] normal-case"
+        >
+          {tag}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function Panel({ children, className = '' }) {
+  return <div className={`rounded-3xl bg-white/[0.06] border border-white/10 p-5 sm:p-7 backdrop-blur-sm ${className}`}>{children}</div>;
+}
+
+function PanelHeading({ icon, color, children }) {
+  return (
+    <h4 className="flex items-center gap-2 text-white font-heading text-sm sm:text-base tracking-wide uppercase mb-5">
+      {icon({ color })}
+      {children}
+    </h4>
+  );
+}
+
+function ImmersiveOverlay({ univ, overlayRef, index }) {
+  const color = RING_COLORS[index % RING_COLORS.length];
+  const steps = univ.nested.how.text.split('→').map((s) => s.trim()).filter(Boolean);
+  const tags = univ.nested.who.text.split(',').map((s) => s.trim()).filter(Boolean);
+  const trust = univ.nested.trust;
+  // Alternates the composition per universe so the six detail screens don't
+  // all read as the same rigid 3-box template.
+  const variant = index % 2;
+
+  const stepsPanel = (
+    <Panel className={variant === 0 ? 'lg:col-span-3' : ''}>
+      <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
+      <StepsWidget steps={steps} color={color} layout={variant === 0 ? 'column' : 'row'} />
+    </Panel>
+  );
+
+  const tagsPanel = (
+    <Panel>
+      <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
+      <TagsWidget tags={tags} />
+    </Panel>
+  );
+
+  const trustPanel = (
+    <div className="rounded-3xl p-5 sm:p-7 border backdrop-blur-sm" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+      <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
+      <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
+    </div>
+  );
+
   return (
     <div
       ref={overlayRef}
@@ -272,42 +628,47 @@ function ImmersiveOverlay({ univ, overlayRef }) {
     >
       <div className="absolute inset-0">
         <img src={univ.image} alt="" className="w-full h-full object-cover scale-110" />
-        <div className="absolute inset-0 bg-black/75" />
+        <div className="absolute inset-0 bg-black/80" />
+        <div
+          className="absolute inset-0"
+          style={{ background: `radial-gradient(circle at 50% 0%, ${color}22, transparent 60%)` }}
+        />
       </div>
 
-      <div className="relative min-h-full flex items-center justify-center px-4 py-12 sm:py-16">
+      <div className="relative min-h-full flex items-center justify-center px-4 py-14 sm:py-20">
         <div className="w-full max-w-5xl">
-          <h3 className="font-heading text-white text-3xl sm:text-5xl normal-case text-center mb-8 sm:mb-12 drop-shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
-            {univ.label}
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-5">
-            {cards.map((c, idx) => (
-              <div
-                key={c.title}
-                className="group rounded-2xl bg-white/[0.08] border border-white/[0.12] overflow-hidden transition-transform duration-300"
-              >
-                <div className="relative h-32 sm:h-36 overflow-hidden">
-                  <img
-                    src={c.image}
-                    alt=""
-                    loading="lazy"
-                    className="absolute inset-0 w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div
-                    className="absolute bottom-3 left-4 text-[10px] tracking-[0.2em] uppercase font-semibold"
-                    style={{ color: RING_COLORS[0] }}
-                  >
-                    {c.title}
-                  </div>
-                </div>
-                <div className="p-4 sm:p-5">
-                  <p className="text-white/90 text-sm leading-relaxed">{c.text}</p>
-                </div>
-              </div>
-            ))}
+          <div className="text-center mb-8 sm:mb-12">
+            <span
+              className="inline-block text-[10px] sm:text-[11px] tracking-[0.3em] uppercase font-semibold mb-3 px-3 py-1 rounded-full border"
+              style={{ color, borderColor: `${color}66` }}
+            >
+              Univers Moledi Events
+            </span>
+            <h3 className="font-heading text-white text-3xl sm:text-5xl normal-case drop-shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+              {univ.label}
+            </h3>
+            <p className="mt-4 max-w-2xl mx-auto text-white/70 text-sm sm:text-base leading-relaxed normal-case">
+              {univ.definition}
+            </p>
           </div>
+
+          {variant === 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
+              {stepsPanel}
+              <div className="lg:col-span-2 flex flex-col gap-4 sm:gap-6">
+                {tagsPanel}
+                {trustPanel}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4 sm:gap-6">
+              {stepsPanel}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                {tagsPanel}
+                {trustPanel}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
