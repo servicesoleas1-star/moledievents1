@@ -3,9 +3,11 @@
 @tailwind utilities;
 
 @layer base {
-  html {
-    scroll-behavior: smooth;
-  }
+  /* Deliberately no `scroll-behavior: smooth` on html: it fights GSAP
+     ScrollTrigger's own scrub/snap easing (native smooth-scroll keeps
+     animating the scroll position on top of what GSAP is driving, which
+     is exactly what caused the ZUI story to feel laggy/rubbery). GSAP's
+     tweens already provide all the smoothing this site needs. */
   body {
     @apply font-body text-ink-900 bg-white antialiased;
     overflow-x: clip;
