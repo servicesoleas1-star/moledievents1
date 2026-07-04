@@ -26,21 +26,26 @@ const T = { in: 1.0, deepen: 0.7, surface: 0.6, out: 0.8 };
 // Real seconds for each kind of step — a scroll is just the "play" trigger,
 // not something the camera tracks 1:1. Each value is how long that whole
 // pre-built camera move takes to play once fired, like starting a video
-// clip. Slowed down deliberately: the longer the flight through space, the
-// more it reads as immersive travel rather than a snap. `outIn` is the
-// merged "dézoom then re-zoom" clip that plays as ONE uninterrupted flight
-// between two universes, so it gets the longest budget of all.
-const STEP_DURATION = { in: 1.7, deepen: 1.55, outIn: 3.0, out: 1.9, jump: 1.7 };
+// clip. Slowed down further per feedback: the user wants each flight to
+// genuinely read as "taking time" — the longer the trip through space, the
+// stronger the sense of immersion. `outIn` is the merged "dézoom then
+// re-zoom" clip that plays as ONE uninterrupted flight between two
+// universes, so it gets the longest budget of all.
+const STEP_DURATION = { in: 2.6, deepen: 2.3, outIn: 4.6, out: 2.9, jump: 2.5 };
 const STEP_EASE = 'power2.inOut';
 
-// A different "camera personality" per universe so the zooms don't all feel
-// identical — cycled by universe index. Only eases/overshoot amounts vary
-// (never the tween count or position anchors), so this can't reintroduce
-// timing conflicts between blocks.
+// One distinct "camera personality" per universe (6, not 3, so nothing
+// repeats across a full pass) so the zooms/dézooms never feel monotone.
+// Each style varies the ease curve, a touch of rotation on the flight, and
+// how hard the image punches in — but never the tween count or position
+// anchors, so this can't reintroduce timing conflicts between blocks.
 const FLIGHT_STYLES = [
-  { inEase: 'power2.out', deepenEase: 'power2.in', ringEase: 'back.out(1.4)', imgPunch: 1.2 },
-  { inEase: 'power1.inOut', deepenEase: 'power1.inOut', ringEase: 'elastic.out(1,0.65)', imgPunch: 1.14 },
-  { inEase: 'back.out(1.05)', deepenEase: 'power3.in', ringEase: 'back.out(2)', imgPunch: 1.28 },
+  { inEase: 'power2.out', deepenEase: 'power2.in', ringEase: 'back.out(1.4)', imgPunch: 1.2, rotate: 0 },
+  { inEase: 'power1.inOut', deepenEase: 'power1.inOut', ringEase: 'elastic.out(1,0.65)', imgPunch: 1.14, rotate: -1.5 },
+  { inEase: 'back.out(1.05)', deepenEase: 'power3.in', ringEase: 'back.out(2)', imgPunch: 1.28, rotate: 1.5 },
+  { inEase: 'sine.inOut', deepenEase: 'sine.in', ringEase: 'power1.out', imgPunch: 1.1, rotate: 0 },
+  { inEase: 'power4.out', deepenEase: 'power4.in', ringEase: 'back.out(1.8)', imgPunch: 1.32, rotate: -2 },
+  { inEase: 'circ.out', deepenEase: 'circ.in', ringEase: 'elastic.out(1,0.5)', imgPunch: 1.18, rotate: 2 },
 ];
 
 function ZUIHubStory() {
@@ -83,7 +88,7 @@ function ZUIHubStory() {
       // header never overlaps blocks that sit near the top of the canvas.
       const yOffset = navHeight / 2;
 
-      gsap.set(canvas, { x: 0, y: yOffset, scale: OVERVIEW, transformOrigin: '50% 50%' });
+      gsap.set(canvas, { x: 0, y: yOffset, scale: OVERVIEW, rotate: 0, transformOrigin: '50% 50%' });
       gsap.set(imgRefs.current, { scale: 1, transformOrigin: '50% 50%' });
       gsap.set(descRefs.current, { opacity: 0, y: 12 });
       gsap.set(ringRefs.current, { opacity: 0, scale: 0.92 });
@@ -99,8 +104,12 @@ function ZUIHubStory() {
       const tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.inOut' } });
       tlRef.current = tl;
 
-      const flyTo = (dx, dy, S, dur, ease, pos) =>
-        tl.to(canvas, { x: -dx * S, y: -dy * S + yOffset, scale: S, duration: dur, ease: ease || 'power3.inOut' }, pos ?? '>');
+      const flyTo = (dx, dy, S, dur, ease, pos, rotate = 0) =>
+        tl.to(
+          canvas,
+          { x: -dx * S, y: -dy * S + yOffset, scale: S, rotate, duration: dur, ease: ease || 'power3.inOut' },
+          pos ?? '>'
+        );
 
       const stops = ['overview-0'];
       tl.addLabel('overview-0');
@@ -125,7 +134,7 @@ function ZUIHubStory() {
         // ending flyTo. Without this, this block's camera flight used to
         // start early and visibly collide with the previous block's outro.
         let t0 = tl.duration();
-        flyTo(p.x, p.y, ZOOM_1, T.in, style.inEase, t0);
+        flyTo(p.x, p.y, ZOOM_1, T.in, style.inEase, t0, style.rotate);
         tl.to(ring, { opacity: 1, scale: 1, duration: T.in * 0.6, ease: style.ringEase }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.in * 0.45, ease: 'power2.out' }, `>-${T.in * 0.25}`);
         if (title) {
@@ -147,7 +156,7 @@ function ZUIHubStory() {
           tl.to(title, { opacity: 0, scale: 1, duration: T.deepen * 0.3 }, '<');
         }
         t0 = tl.duration();
-        flyTo(p.x, p.y, ZOOM_2, T.deepen, style.deepenEase);
+        flyTo(p.x, p.y, ZOOM_2, T.deepen, style.deepenEase, undefined, style.rotate);
         tl.to(img, { scale: style.imgPunch, duration: T.deepen, ease: style.deepenEase }, '<');
         tl.to(overlay, { opacity: 1, pointerEvents: 'auto', duration: T.deepen * 0.55, ease: 'power2.inOut' }, `>-${T.deepen * 0.45}`);
         if (flash) {
@@ -162,7 +171,7 @@ function ZUIHubStory() {
         // zoom-1 on the way out — matches the "big dézoom" the story needs
         // between one universe's detail and the next universe's overview.
         tl.to(overlay, { opacity: 0, pointerEvents: 'none', duration: T.surface * 0.45, ease: 'power2.in' });
-        flyTo(p.x, p.y, ZOOM_1, T.surface, 'power2.out');
+        flyTo(p.x, p.y, ZOOM_1, T.surface, 'power2.out', undefined, style.rotate);
         tl.to(img, { scale: 1, duration: T.surface, ease: 'power2.out' }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.surface * 0.5 }, `>-${T.surface * 0.35}`);
         if (title) {
@@ -173,7 +182,7 @@ function ZUIHubStory() {
         t0 = tl.duration();
         tl.to(ring, { opacity: 0, scale: 0.92, duration: T.out * 0.4, ease: 'power2.in' });
         tl.to(desc, { opacity: 0, duration: T.out * 0.35 }, '<');
-        flyTo(0, 0, OVERVIEW, T.out, 'power3.inOut');
+        flyTo(0, 0, OVERVIEW, T.out, 'power3.inOut', undefined, 0);
         tl.to(others, { opacity: 1, filter: 'blur(0px)', duration: T.out, ease: 'power2.inOut' }, t0);
         tl.addLabel(`overview-${i + 1}`);
         // Every intermediate "back to overview" is NOT its own stop — it
@@ -326,18 +335,32 @@ function ZUIHubStory() {
       aria-label="Les 6 univers de Moledi Events"
     >
       <div className="absolute inset-0 bg-gradient-to-br from-ink-900 via-[#0F1E3D] to-ink-900" />
+      {/* Organic blob shapes (asymmetric border-radius, not perfect circles)
+          slowly drifting — reads as a soft curved backdrop rather than the
+          flat gradient + circular glows it replaced. */}
       <div
-        className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full bg-primary/15 blur-[120px] animate-pulse"
-        style={{ willChange: 'opacity', transform: 'translateZ(0)' }}
+        className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] bg-primary/15 blur-[120px] animate-[drift1_26s_ease-in-out_infinite]"
+        style={{ borderRadius: '42% 58% 65% 35% / 45% 40% 60% 55%', willChange: 'opacity, transform', transform: 'translateZ(0)' }}
       />
       <div
-        className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full bg-secondary/20 blur-[120px]"
-        style={{ transform: 'translateZ(0)' }}
+        className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] bg-secondary/20 blur-[120px] animate-[drift2_32s_ease-in-out_infinite]"
+        style={{ borderRadius: '60% 40% 30% 70% / 55% 65% 35% 45%', transform: 'translateZ(0)' }}
       />
       <div
-        className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50rem] h-[50rem] rounded-full bg-primary/[0.04] blur-[80px]"
-        style={{ transform: 'translate(-50%, -50%) translateZ(0)' }}
+        className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50rem] h-[50rem] bg-primary/[0.04] blur-[80px]"
+        style={{ borderRadius: '48% 52% 38% 62% / 52% 45% 55% 48%', transform: 'translate(-50%, -50%) translateZ(0)' }}
       />
+      {/* Two large sweeping curves (SVG paths) that arc across the whole
+          section, reinforcing the "curved canvas" feel the flat gradient
+          alone couldn't give. */}
+      <svg
+        className="pointer-events-none absolute inset-0 w-full h-full opacity-[0.07]"
+        viewBox="0 0 1000 1000"
+        preserveAspectRatio="none"
+      >
+        <path d="M -100 250 C 250 50, 650 550, 1100 300" stroke="#FF6A00" strokeWidth="2" fill="none" />
+        <path d="M -100 800 C 300 950, 700 500, 1100 750" stroke="#2B6BFF" strokeWidth="2" fill="none" />
+      </svg>
 
       <div className="absolute inset-0 flex items-center justify-center">
         <div ref={canvasRef} data-testid="zui-canvas" className="absolute left-1/2 top-1/2" style={{ willChange: 'transform' }}>
@@ -595,26 +618,30 @@ function ImmersiveOverlay({ univ, overlayRef, index }) {
   const steps = univ.nested.how.text.split('→').map((s) => s.trim()).filter(Boolean);
   const tags = univ.nested.who.text.split(',').map((s) => s.trim()).filter(Boolean);
   const trust = univ.nested.trust;
-  // Alternates the composition per universe so the six detail screens don't
-  // all read as the same rigid 3-box template.
-  const variant = index % 2;
+  // Cycles through three genuinely different compositions (not just a
+  // column/row swap) so the six detail screens read as a designed set
+  // instead of the same rigid 3-box template repeated with a shuffle.
+  const variant = index % 3;
 
   const stepsPanel = (
-    <Panel className={variant === 0 ? 'lg:col-span-3' : ''}>
+    <Panel className={variant === 0 ? 'lg:col-span-3' : variant === 2 ? 'lg:col-start-2 lg:col-span-8' : ''}>
       <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
-      <StepsWidget steps={steps} color={color} layout={variant === 0 ? 'column' : 'row'} />
+      <StepsWidget steps={steps} color={color} layout={variant === 1 ? 'row' : 'column'} />
     </Panel>
   );
 
   const tagsPanel = (
-    <Panel>
+    <Panel className={variant === 2 ? 'lg:col-start-1 lg:col-span-5 lg:mt-10' : ''}>
       <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
       <TagsWidget tags={tags} />
     </Panel>
   );
 
   const trustPanel = (
-    <div className="rounded-3xl p-5 sm:p-7 border backdrop-blur-sm" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+    <div
+      className={`rounded-3xl p-5 sm:p-7 border backdrop-blur-sm ${variant === 2 ? 'lg:col-start-6 lg:col-span-5 lg:-mt-6' : ''}`}
+      style={{ background: `${color}14`, borderColor: `${color}40` }}
+    >
       <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
       <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
     </div>
@@ -652,7 +679,7 @@ function ImmersiveOverlay({ univ, overlayRef, index }) {
             </p>
           </div>
 
-          {variant === 0 ? (
+          {variant === 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
               {stepsPanel}
               <div className="lg:col-span-2 flex flex-col gap-4 sm:gap-6">
@@ -660,13 +687,24 @@ function ImmersiveOverlay({ univ, overlayRef, index }) {
                 {trustPanel}
               </div>
             </div>
-          ) : (
+          )}
+          {variant === 1 && (
             <div className="flex flex-col gap-4 sm:gap-6">
               {stepsPanel}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 {tagsPanel}
                 {trustPanel}
               </div>
+            </div>
+          )}
+          {variant === 2 && (
+            // Diagonal, offset composition: the three panels sit on a wide
+            // 12-col grid with staggered vertical offsets instead of stacked
+            // rows, so the reading path zig-zags left→right→left.
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
+              {stepsPanel}
+              {tagsPanel}
+              {trustPanel}
             </div>
           )}
         </div>
