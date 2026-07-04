@@ -63,6 +63,8 @@ function ZUIHubStory() {
   const stopsRef = useRef([]);
   const currentStepRef = useRef(0);
   const isAnimatingRef = useRef(false);
+  const wheelAccumRef = useRef(0);
+  const lastWheelTimeRef = useRef(0);
   const [inSection, setInSection] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
@@ -262,22 +264,48 @@ function ZUIHubStory() {
   // and advances/retreats exactly one step — except at the very first or
   // last step, where we let the browser scroll on to the previous/next
   // section instead of trapping the user inside the story.
+  //
+  // A trackpad fires many `wheel` events per gesture with a tiny deltaY
+  // each (often well under 1). Comparing a single event's delta to a fixed
+  // threshold meant those events all fell into the "too small to count"
+  // branch, which still called preventDefault() — so the page stopped
+  // scrolling but no step ever advanced, reading as fully stuck. We now
+  // accumulate deltaY across events (reset after a pause or a direction
+  // flip) and only step once the running total crosses the threshold, so a
+  // gentle trackpad swipe and a notchy mouse wheel both work the same way.
   useEffect(() => {
+    const WHEEL_THRESHOLD = 45;
+    const GESTURE_TIMEOUT = 400;
     const onWheel = (e) => {
       const stops = stopsRef.current;
       if (!stops.length || !rootRef.current) return;
       if (Math.abs(rootRef.current.getBoundingClientRect().top) >= 2) return;
-      const dir = e.deltaY > 4 ? 1 : e.deltaY < -4 ? -1 : 0;
-      if (dir === 0) {
-        e.preventDefault();
-        return;
-      }
+
+      const rawDir = e.deltaY > 0 ? 1 : e.deltaY < 0 ? -1 : 0;
+      if (rawDir === 0) return;
+
       const atStart = currentStepRef.current === 0;
       const atEnd = currentStepRef.current === stops.length - 1;
-      if ((dir === -1 && atStart) || (dir === 1 && atEnd)) return; // release to the next/previous section
+      if ((rawDir === -1 && atStart) || (rawDir === 1 && atEnd)) {
+        wheelAccumRef.current = 0;
+        return; // release to the next/previous section
+      }
+
       e.preventDefault();
       if (isAnimatingRef.current) return;
-      goToStep(currentStepRef.current + dir);
+
+      const now = performance.now();
+      if (now - lastWheelTimeRef.current > GESTURE_TIMEOUT || Math.sign(wheelAccumRef.current) === -rawDir) {
+        wheelAccumRef.current = 0;
+      }
+      lastWheelTimeRef.current = now;
+      wheelAccumRef.current += e.deltaY;
+
+      if (Math.abs(wheelAccumRef.current) >= WHEEL_THRESHOLD) {
+        const dir = wheelAccumRef.current > 0 ? 1 : -1;
+        wheelAccumRef.current = 0;
+        goToStep(currentStepRef.current + dir);
+      }
     };
     window.addEventListener('wheel', onWheel, { passive: false });
     return () => window.removeEventListener('wheel', onWheel);
