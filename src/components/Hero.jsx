@@ -51,7 +51,7 @@ function Hero() {
   }, []);
 
   return (
-    <section className="relative min-h-[100svh] flex items-center overflow-hidden bg-ink-900">
+    <section data-navbar-theme="dark" className="relative min-h-[100svh] flex items-center overflow-hidden bg-ink-900">
       {/* Poster shows instantly, video fades in when ready */}
       <img
         src={media.heroPoster}

@@ -51,13 +51,35 @@ const item = {
 
 function Navbar() {
   const [open, setOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  const [scrolledPast, setScrolledPast] = useState(false);
+  const [overDark, setOverDark] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
+    const onScroll = () => setScrolledPast(window.scrollY > 24);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // Any section marked data-navbar-theme="dark" (Hero, ZUIHubStory, ...) keeps
+  // the header transparent even after scrolling, so its white/blurred band
+  // never covers dark, full-bleed content underneath it.
+  useEffect(() => {
+    const sections = document.querySelectorAll('[data-navbar-theme="dark"]');
+    if (!sections.length) return;
+    const navHeight = window.innerWidth < 1024 ? 64 : 80;
+    const states = new Map();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => states.set(entry.target, entry.isIntersecting));
+        setOverDark(Array.from(states.values()).some(Boolean));
+      },
+      { rootMargin: `-${navHeight}px 0px -${Math.max(window.innerHeight - navHeight - 1, 0)}px 0px`, threshold: 0 }
+    );
+    sections.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
+  const scrolled = scrolledPast && !overDark;
 
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';

@@ -55,49 +55,41 @@ function ZUIHubStory() {
       const viewportW = window.innerWidth;
       const viewportH = window.innerHeight;
 
+      const navHeight = viewportW < 1024 ? 64 : 80;
+      const usableH = viewportH - navHeight;
+
       const maxX = Math.max(...positions.map((p) => Math.abs(p.x))) + BLOCK_W / 2;
       const maxY = Math.max(...positions.map((p) => Math.abs(p.y))) + BLOCK_H / 2;
       const OVERVIEW = Math.min(
         (viewportW * 0.94) / (maxX * 2),
-        (viewportH * 0.9) / (maxY * 2)
+        (usableH * 0.9) / (maxY * 2)
       );
       const mobile = viewportW < 768;
       const ZOOM_1 = mobile ? Math.min(1, (viewportW * 0.88) / BLOCK_W) : 1;
       const ZOOM_2 = ZOOM_1 * 1.4;
+      // Push the whole scene down by half the navbar height so the fixed
+      // header never overlaps blocks that sit near the top of the canvas.
+      const yOffset = navHeight / 2;
 
-      gsap.set(canvas, { x: 0, y: 0, scale: OVERVIEW, transformOrigin: '50% 50%' });
-      gsap.set(imgRefs.current, { scale: 1, transformOrigin: '50% 50%' });
+      gsap.set(canvas, { x: 0, y: yOffset, scale: OVERVIEW, transformOrigin: '50% 50%', force3D: true });
+      gsap.set(imgRefs.current, { scale: 1, transformOrigin: '50% 50%', force3D: true });
       gsap.set(descRefs.current, { opacity: 0, y: 12 });
       gsap.set(ringRefs.current, { opacity: 0, scale: 0.92 });
-      gsap.set(overlayRefs.current, { opacity: 0 });
-
-      // Subtle idle pulse on blocks at overview
-      blockRefs.current.forEach((block) => {
-        if (block) {
-          gsap.to(block, {
-            y: -6,
-            duration: 2.5 + Math.random() * 1.5,
-            yoyo: true,
-            repeat: -1,
-            ease: 'sine.inOut',
-            delay: Math.random() * 2,
-          });
-        }
-      });
+      gsap.set(overlayRefs.current, { opacity: 0, pointerEvents: 'none' });
 
       const tl = gsap.timeline({
-        defaults: { ease: 'power3.inOut' },
+        defaults: { ease: 'power3.inOut', force3D: true },
         scrollTrigger: {
           trigger: rootRef.current,
           start: 'top top',
           end: 'bottom bottom',
-          scrub: 0.15,
+          scrub: 0.4,
           invalidateOnRefresh: true,
         },
       });
 
       const flyTo = (dx, dy, S, dur, ease) =>
-        tl.to(canvas, { x: -dx * S, y: -dy * S, scale: S, duration: dur, ease: ease || 'power3.inOut' }, '>');
+        tl.to(canvas, { x: -dx * S, y: -dy * S + yOffset, scale: S, duration: dur, ease: ease || 'power3.inOut' }, '>');
       const hold = (dur) => tl.to({}, { duration: dur });
 
       hold(T.overviewHold);
@@ -128,11 +120,11 @@ function ZUIHubStory() {
         }
         flyTo(p.x, p.y, ZOOM_2, T.deepen, 'power2.in');
         tl.to(img, { scale: 1.2, duration: T.deepen, ease: 'power2.in' }, '<');
-        tl.to(overlay, { opacity: 1, duration: T.deepen * 0.55, ease: 'power2.inOut' }, `>-${T.deepen * 0.45}`);
+        tl.to(overlay, { opacity: 1, pointerEvents: 'auto', duration: T.deepen * 0.55, ease: 'power2.inOut' }, `>-${T.deepen * 0.45}`);
         hold(T.zoom2Hold);
 
         // 3. ZOOM-2 → ZOOM-1
-        tl.to(overlay, { opacity: 0, duration: T.surface * 0.45, ease: 'power2.in' });
+        tl.to(overlay, { opacity: 0, pointerEvents: 'none', duration: T.surface * 0.45, ease: 'power2.in' });
         flyTo(p.x, p.y, ZOOM_1, T.surface, 'power2.out');
         tl.to(img, { scale: 1, duration: T.surface, ease: 'power2.out' }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.surface * 0.5 }, `>-${T.surface * 0.35}`);
@@ -152,15 +144,25 @@ function ZUIHubStory() {
   return (
     <section
       ref={rootRef}
+      data-navbar-theme="dark"
       className="relative bg-ink-900"
       style={{ height: `${sectionVh}vh` }}
       aria-label="Les 6 univers de Moledi Events"
     >
       <div className="sticky top-0 h-[100svh] overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-ink-900 via-[#0F1E3D] to-ink-900" />
-        <div className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full bg-primary/15 blur-[120px] animate-pulse" />
-        <div className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full bg-secondary/20 blur-[120px]" />
-        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50rem] h-[50rem] rounded-full bg-primary/[0.04] blur-[80px]" />
+        <div
+          className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full bg-primary/15 blur-[120px] animate-pulse"
+          style={{ willChange: 'opacity', transform: 'translateZ(0)' }}
+        />
+        <div
+          className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full bg-secondary/20 blur-[120px]"
+          style={{ transform: 'translateZ(0)' }}
+        />
+        <div
+          className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50rem] h-[50rem] rounded-full bg-primary/[0.04] blur-[80px]"
+          style={{ transform: 'translate(-50%, -50%) translateZ(0)' }}
+        />
 
         <div className="absolute inset-0 flex items-center justify-center">
           <div ref={canvasRef} className="absolute left-1/2 top-1/2" style={{ willChange: 'transform' }}>
