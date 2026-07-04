@@ -11,22 +11,19 @@ const rise = {
   show: { opacity: 1, y: 0, transition: { duration: 0.75, ease: [0.22, 1, 0.36, 1] } },
 };
 
-function Reveal({ text, delay = 0 }) {
+// Simple, robust fade+rise reveal — no per-word overflow-hidden masking.
+// (The previous per-word clipping technique was unreliable on some mobile
+// browsers, causing the second line to disappear entirely.)
+function Reveal({ text, delay = 0, className = '' }) {
   return (
-    <span>
-      {text.split(' ').map((word, i) => (
-        <span key={i} className="inline-block overflow-hidden align-bottom">
-          <motion.span
-            className="inline-block"
-            initial={{ y: '110%' }}
-            animate={{ y: 0 }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: delay + i * 0.07 }}
-          >
-            {word}&nbsp;
-          </motion.span>
-        </span>
-      ))}
-    </span>
+    <motion.span
+      className={`inline-block ${className}`}
+      initial={{ opacity: 0, y: 22 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay }}
+    >
+      {text}
+    </motion.span>
   );
 }
 
@@ -96,12 +93,12 @@ function Hero() {
           L'Afrique bouge, Moledi la connecte
         </motion.p>
 
-        <h1 className="text-white text-[2.15rem] leading-[1.02] sm:text-6xl lg:text-7xl">
-          <Reveal text="Vivez l'événement" delay={0.55} />
-          <br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-[#FFB347]">
-            <Reveal text="en un seul clic" delay={0.9} />
-          </span>
+        <h1
+          className="text-white leading-[1.08] sm:leading-[1.02]"
+          style={{ fontSize: 'clamp(1.9rem, 8vw, 5rem)' }}
+        >
+          <Reveal text="Vivez l'événement" delay={0.55} className="block" />
+          <Reveal text="en un seul clic" delay={0.85} className="block text-[#FFB347]" />
         </h1>
 
         <motion.p

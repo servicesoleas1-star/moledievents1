@@ -1,56 +1,42 @@
-import { useRef } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 /**
- * Light-ray transition — a soft luminous burst blooms from a horizon line,
- * washes the screen in warm brand light, then dissolves into the next
- * section. Compact (100vh) and mobile-friendly.
+ * Slogan interlude between the universes section and the rest of the page.
+ * Previously this was driven by precise scroll-position math (useScroll +
+ * useTransform across an exact 100vh window), which made the reveal feel
+ * rushed/jarring on real devices. Replaced with the same safe whileInView
+ * reveal used everywhere else on the site, plus a slow ambient glow loop
+ * that runs independently of scroll (so it can never feel broken or
+ * out of sync).
  */
 function PortalTransition() {
-  const ref = useRef(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] });
-
-  const rayScale = useTransform(scrollYProgress, [0.2, 0.55, 0.8], [0.4, 1.6, 3.4]);
-  const rayOpacity = useTransform(scrollYProgress, [0.2, 0.5, 0.75, 0.95], [0, 1, 1, 0]);
-  const bgWash = useTransform(scrollYProgress, [0.3, 0.7], [0, 1]);
-  const textOpacity = useTransform(scrollYProgress, [0.35, 0.5, 0.7], [0, 1, 0]);
-  const textY = useTransform(scrollYProgress, [0.35, 0.7], [24, -12]);
-
   return (
-    <section ref={ref} className="relative h-screen bg-ink-900 overflow-hidden">
-      <div className="sticky top-0 h-screen flex items-center justify-center overflow-hidden">
-        {/* Horizon */}
-        <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+    <section className="relative bg-ink-900 py-24 sm:py-32 overflow-hidden">
+      {/* Horizon line */}
+      <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
 
-        {/* Warm brand wash */}
-        <motion.div
-          style={{ opacity: bgWash }}
-          className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/25 to-transparent"
-        />
+      {/* Ambient glow — slow independent loop, never tied to scroll */}
+      <motion.div
+        animate={{ opacity: [0.5, 0.85, 0.5], scale: [1, 1.08, 1] }}
+        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[28rem] h-[28rem] rounded-full"
+      >
+        <div className="absolute inset-0 rounded-full bg-primary/30 blur-3xl" />
+        <div className="absolute inset-10 rounded-full bg-[#FFB347]/30 blur-3xl" />
+      </motion.div>
 
-        {/* Central light ray — a bloom of orange light */}
-        <motion.div
-          style={{ scale: rayScale, opacity: rayOpacity }}
-          className="absolute w-[36rem] h-[36rem] rounded-full origin-center"
-        >
-          <div className="absolute inset-0 rounded-full bg-primary/40 blur-3xl" />
-          <div className="absolute inset-8 rounded-full bg-[#FFB347]/40 blur-3xl" />
-          <div className="absolute inset-16 rounded-full bg-white/50 blur-2xl" />
-        </motion.div>
-
-        {/* Slogan */}
-        <motion.div
-          style={{ opacity: textOpacity, y: textY }}
-          className="relative z-10 text-center px-6"
-        >
-          <p className="text-white/70 text-xs tracking-[0.35em] uppercase mb-3">
-            Moledi Events
-          </p>
-          <h2 className="text-white text-3xl sm:text-5xl leading-tight max-w-3xl mx-auto">
-            Faites entrer la fête<br className="hidden sm:block" /> dans votre poche
-          </h2>
-        </motion.div>
-      </div>
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-20% 0px' }}
+        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+        className="relative z-10 text-center px-6"
+      >
+        <p className="text-white/60 text-xs tracking-[0.35em] uppercase mb-3">Moledi Events</p>
+        <h2 className="text-white text-3xl sm:text-5xl leading-tight max-w-3xl mx-auto">
+          Faites entrer la fête<br className="hidden sm:block" /> dans votre poche
+        </h2>
+      </motion.div>
     </section>
   );
 }
