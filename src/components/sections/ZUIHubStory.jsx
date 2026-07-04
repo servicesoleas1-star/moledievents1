@@ -26,11 +26,22 @@ const T = { in: 1.0, deepen: 0.7, surface: 0.6, out: 0.8 };
 // Real seconds for each kind of step — a scroll is just the "play" trigger,
 // not something the camera tracks 1:1. Each value is how long that whole
 // pre-built camera move takes to play once fired, like starting a video
-// clip: slow and deliberate enough to read as a deliberate flight through
-// space rather than a snap. `outIn` is the merged "dézoom then re-zoom"
-// clip that plays as ONE uninterrupted flight between two universes.
-const STEP_DURATION = { in: 1.15, deepen: 1.0, outIn: 1.9, out: 1.3, jump: 1.4 };
+// clip. Slowed down deliberately: the longer the flight through space, the
+// more it reads as immersive travel rather than a snap. `outIn` is the
+// merged "dézoom then re-zoom" clip that plays as ONE uninterrupted flight
+// between two universes, so it gets the longest budget of all.
+const STEP_DURATION = { in: 1.7, deepen: 1.55, outIn: 3.0, out: 1.9, jump: 1.7 };
 const STEP_EASE = 'power2.inOut';
+
+// A different "camera personality" per universe so the zooms don't all feel
+// identical — cycled by universe index. Only eases/overshoot amounts vary
+// (never the tween count or position anchors), so this can't reintroduce
+// timing conflicts between blocks.
+const FLIGHT_STYLES = [
+  { inEase: 'power2.out', deepenEase: 'power2.in', ringEase: 'back.out(1.4)', imgPunch: 1.2 },
+  { inEase: 'power1.inOut', deepenEase: 'power1.inOut', ringEase: 'elastic.out(1,0.65)', imgPunch: 1.14 },
+  { inEase: 'back.out(1.05)', deepenEase: 'power3.in', ringEase: 'back.out(2)', imgPunch: 1.28 },
+];
 
 function ZUIHubStory() {
   const rootRef = useRef(null);
@@ -103,6 +114,7 @@ function ZUIHubStory() {
         const flash = flashRefs.current[i];
         const ringColor = RING_COLORS[i % RING_COLORS.length];
         const others = blockRefs.current.filter((_, idx) => idx !== i).concat([logoRef.current]);
+        const style = FLIGHT_STYLES[i % FLIGHT_STYLES.length];
         gsap.set(ring, { '--ring-color': ringColor });
 
         // 1. OVERVIEW → ZOOM-1  (spotlight this block, dim every other one)
@@ -113,8 +125,8 @@ function ZUIHubStory() {
         // ending flyTo. Without this, this block's camera flight used to
         // start early and visibly collide with the previous block's outro.
         let t0 = tl.duration();
-        flyTo(p.x, p.y, ZOOM_1, T.in, 'power2.out', t0);
-        tl.to(ring, { opacity: 1, scale: 1, duration: T.in * 0.6, ease: 'back.out(1.4)' }, '<');
+        flyTo(p.x, p.y, ZOOM_1, T.in, style.inEase, t0);
+        tl.to(ring, { opacity: 1, scale: 1, duration: T.in * 0.6, ease: style.ringEase }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.in * 0.45, ease: 'power2.out' }, `>-${T.in * 0.25}`);
         if (title) {
           tl.to(title, { scale: 1.05, duration: T.in * 0.5 }, '<');
@@ -135,8 +147,8 @@ function ZUIHubStory() {
           tl.to(title, { opacity: 0, scale: 1, duration: T.deepen * 0.3 }, '<');
         }
         t0 = tl.duration();
-        flyTo(p.x, p.y, ZOOM_2, T.deepen, 'power2.in');
-        tl.to(img, { scale: 1.2, duration: T.deepen, ease: 'power2.in' }, '<');
+        flyTo(p.x, p.y, ZOOM_2, T.deepen, style.deepenEase);
+        tl.to(img, { scale: style.imgPunch, duration: T.deepen, ease: style.deepenEase }, '<');
         tl.to(overlay, { opacity: 1, pointerEvents: 'auto', duration: T.deepen * 0.55, ease: 'power2.inOut' }, `>-${T.deepen * 0.45}`);
         if (flash) {
           tl.set(flash, { '--flash-color': ringColor }, t0);
@@ -512,11 +524,101 @@ function IconShield({ color }) {
   );
 }
 
+function StepsWidget({ steps, color, layout }) {
+  if (layout === 'row') {
+    return (
+      <div className="flex flex-col sm:flex-row gap-5 sm:gap-4">
+        {steps.map((step, idx) => (
+          <div key={idx} className="flex-1 flex sm:flex-col items-start gap-3 sm:gap-4">
+            <span
+              className="flex-none w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-ink-900"
+              style={{ backgroundColor: color }}
+            >
+              {idx + 1}
+            </span>
+            <p className="text-white/85 text-sm sm:text-base leading-relaxed normal-case pt-1 sm:pt-0">{step}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <ol>
+      {steps.map((step, idx) => (
+        <li key={idx} className="flex gap-3 sm:gap-4">
+          <div className="flex flex-col items-center">
+            <span
+              className="flex-none w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold text-ink-900"
+              style={{ backgroundColor: color }}
+            >
+              {idx + 1}
+            </span>
+            {idx < steps.length - 1 && <span className="w-px flex-1 min-h-[1.25rem] my-1 bg-white/15" />}
+          </div>
+          <p className="text-white/85 text-sm sm:text-base leading-relaxed normal-case pb-4">{step}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function TagsWidget({ tags }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {tags.map((tag, idx) => (
+        <span
+          key={idx}
+          className="text-xs sm:text-sm text-white/90 px-3 py-1.5 rounded-full border border-white/15 bg-white/[0.04] normal-case"
+        >
+          {tag}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function Panel({ children, className = '' }) {
+  return <div className={`rounded-3xl bg-white/[0.06] border border-white/10 p-5 sm:p-7 backdrop-blur-sm ${className}`}>{children}</div>;
+}
+
+function PanelHeading({ icon, color, children }) {
+  return (
+    <h4 className="flex items-center gap-2 text-white font-heading text-sm sm:text-base tracking-wide uppercase mb-5">
+      {icon({ color })}
+      {children}
+    </h4>
+  );
+}
+
 function ImmersiveOverlay({ univ, overlayRef, index }) {
   const color = RING_COLORS[index % RING_COLORS.length];
   const steps = univ.nested.how.text.split('→').map((s) => s.trim()).filter(Boolean);
   const tags = univ.nested.who.text.split(',').map((s) => s.trim()).filter(Boolean);
   const trust = univ.nested.trust;
+  // Alternates the composition per universe so the six detail screens don't
+  // all read as the same rigid 3-box template.
+  const variant = index % 2;
+
+  const stepsPanel = (
+    <Panel className={variant === 0 ? 'lg:col-span-3' : ''}>
+      <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
+      <StepsWidget steps={steps} color={color} layout={variant === 0 ? 'column' : 'row'} />
+    </Panel>
+  );
+
+  const tagsPanel = (
+    <Panel>
+      <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
+      <TagsWidget tags={tags} />
+    </Panel>
+  );
+
+  const trustPanel = (
+    <div className="rounded-3xl p-5 sm:p-7 border backdrop-blur-sm" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+      <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
+      <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
+    </div>
+  );
 
   return (
     <div
@@ -550,60 +652,23 @@ function ImmersiveOverlay({ univ, overlayRef, index }) {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
-            <div className="lg:col-span-3 rounded-3xl bg-white/[0.06] border border-white/10 p-5 sm:p-7 backdrop-blur-sm">
-              <h4 className="flex items-center gap-2 text-white font-heading text-sm sm:text-base tracking-wide uppercase mb-5">
-                <IconSteps color={color} />
-                Comment ça marche
-              </h4>
-              <ol className="space-y-0">
-                {steps.map((step, idx) => (
-                  <li key={idx} className="flex gap-3 sm:gap-4">
-                    <div className="flex flex-col items-center">
-                      <span
-                        className="flex-none w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold text-ink-900"
-                        style={{ backgroundColor: color }}
-                      >
-                        {idx + 1}
-                      </span>
-                      {idx < steps.length - 1 && <span className="w-px flex-1 min-h-[1.25rem] my-1 bg-white/15" />}
-                    </div>
-                    <p className="text-white/85 text-sm sm:text-base leading-relaxed normal-case pb-4">{step}</p>
-                  </li>
-                ))}
-              </ol>
-            </div>
-
-            <div className="lg:col-span-2 flex flex-col gap-4 sm:gap-6">
-              <div className="rounded-3xl bg-white/[0.06] border border-white/10 p-5 sm:p-6 backdrop-blur-sm">
-                <h4 className="flex items-center gap-2 text-white font-heading text-sm sm:text-base tracking-wide uppercase mb-4">
-                  <IconPeople color={color} />
-                  Pour qui
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {tags.map((tag, idx) => (
-                    <span
-                      key={idx}
-                      className="text-xs sm:text-sm text-white/90 px-3 py-1.5 rounded-full border border-white/15 bg-white/[0.04] normal-case"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div
-                className="rounded-3xl p-5 sm:p-6 border backdrop-blur-sm"
-                style={{ background: `${color}14`, borderColor: `${color}40` }}
-              >
-                <h4 className="flex items-center gap-2 text-white font-heading text-sm sm:text-base tracking-wide uppercase mb-3">
-                  <IconShield color={color} />
-                  Confiance
-                </h4>
-                <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
+          {variant === 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
+              {stepsPanel}
+              <div className="lg:col-span-2 flex flex-col gap-4 sm:gap-6">
+                {tagsPanel}
+                {trustPanel}
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-col gap-4 sm:gap-6">
+              {stepsPanel}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                {tagsPanel}
+                {trustPanel}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
