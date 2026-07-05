@@ -77,7 +77,7 @@ function Footer() {
         <div className="flex items-center gap-3">
           <img src={media.logo} alt="Moledi Event" className="h-8 w-auto" />
           <p className="text-ink-900 text-sm sm:text-base font-semibold">
-            De l'idée à l'événement en un seul clic.
+            De l'idée à l'événement.
           </p>
         </div>
         <a href="/inscription" className="btn btn-primary shrink-0">

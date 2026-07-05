@@ -5,14 +5,14 @@ import { flag } from '../../config/media';
 
 function CountryPill({ code, name, active }) {
   return (
-    <div className="flex items-center gap-3 shrink-0 px-4">
+    <div className="flex flex-col items-center gap-2 shrink-0 px-6">
       <img
-        src={flag(code.toLowerCase(), 80)}
+        src={flag(code.toLowerCase(), 160)}
         alt=""
-        className={`w-11 h-8 object-cover rounded shadow-sm ${!active ? 'grayscale opacity-60' : ''}`}
+        className={`w-20 h-14 object-cover rounded-lg shadow-sm ${!active ? 'grayscale opacity-60' : ''}`}
         loading="lazy"
       />
-      <span className={`text-base font-semibold whitespace-nowrap ${active ? 'text-ink-900' : 'text-ink-700/70'}`}>
+      <span className={`text-sm font-semibold whitespace-nowrap ${active ? 'text-ink-900' : 'text-ink-700/70'}`}>
         {name}
       </span>
       {!active && (
