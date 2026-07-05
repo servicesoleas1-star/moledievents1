@@ -128,7 +128,7 @@ export const testimonials = [
     name: 'Aminata Mbaye',
     role: 'Organisatrice, Festival de la Musique',
     quote:
-      "Moledi Events nous a permis de vendre plus de 1 200 billets en une semaine, sans stress technique.",
+      "Moledi Event nous a permis de vendre plus de 1 200 billets en une semaine, sans stress technique.",
   },
   {
     id: 2,

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { universes } from '../../data/universes';
@@ -23,27 +23,27 @@ const positions = positionsFor(universes.length);
 
 // Relative weights for the sub-animations inside each transition (arbitrary
 // units — the real on-screen speed of a step is set by STEP_DURATION below,
-// GSAP just samples these proportionally within that window).
-const T = { in: 1.0, deepen: 0.7, surface: 0.6, out: 0.8 };
+// GSAP just samples these proportionally within that window). `hold` is the
+// deliberate dwell at zoom-1 in the middle of a flight: the camera parks on
+// the block for a beat — long enough to read its title/description — before
+// diving on into zoom-2.
+const T = { in: 1.0, hold: 0.45, deepen: 0.7, surface: 0.6, out: 0.8 };
 
-// Real seconds for each kind of step — a scroll is just the "play" trigger,
-// not something the camera tracks 1:1. Each value is how long that whole
-// pre-built camera move takes to play once fired, like starting a video
-// clip. Slowed down further per feedback: the user wants each flight to
-// genuinely read as "taking time" — the longer the trip through space, the
-// stronger the sense of immersion. `outIn` is the merged "dézoom then
-// re-zoom" clip that plays as ONE uninterrupted flight between two
-// universes, so it gets the longest budget of all.
-const STEP_DURATION = { in: 2.6, deepen: 2.3, outIn: 4.6, out: 2.9, jump: 2.5 };
+// Real seconds for each kind of scroll-triggered clip. One scroll = one
+// full clip, and the only resting stops are the zoom-2 screens (plus the
+// initial overview):
+//   - `inDeep`  : overview → zoom-1 (≈1s pause to read) → zoom-2
+//   - `next`    : zoom-2 → dézoom to overview → next zoom-1 (pause) → zoom-2
+//   - `out`     : last zoom-2 → back out to the final overview
+// Long on purpose — the clip's own duration is what paces the story and
+// gives the reader time; the scroll is only the "play" signal.
+const STEP_DURATION = { inDeep: 5.2, next: 7.0, out: 2.9, jump: 2.5 };
 const STEP_EASE = 'power2.inOut';
 
-// One distinct "camera personality" per universe (6, not 3, so nothing
-// repeats across a full pass) so the zooms/dézooms never feel monotone.
-// Only the ease curve varies — no rotation, no independent image scale-up,
-// no title bump. Those extra transforms on the blocks themselves read as
-// unwanted "movement" layered on top of the camera's own zoom, per
-// feedback that it looked messy — the camera move alone (in position and
-// scale) is the entire effect now.
+// One distinct "camera personality" per universe (6, so nothing repeats
+// across a full pass) so the zooms/dézooms never feel monotone. Only the
+// ease curve varies — the camera move alone (position + scale) is the
+// entire effect.
 const FLIGHT_STYLES = [
   { inEase: 'power2.out', deepenEase: 'power2.in', ringEase: 'back.out(1.4)' },
   { inEase: 'power1.inOut', deepenEase: 'power1.inOut', ringEase: 'elastic.out(1,0.65)' },
@@ -72,9 +72,8 @@ function ZUIHubStory() {
   const pendingDirRef = useRef(0);
   const accumRef = useRef(0);
   const lastGestureTimeRef = useRef(0);
+  const firedThisGestureRef = useRef(false);
   const lastScrollRef = useRef(0);
-  const [inSection, setInSection] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(-1);
 
   useLayoutEffect(() => {
     const ctx = gsap.context(() => {
@@ -108,9 +107,8 @@ function ZUIHubStory() {
       gsap.set(logoRef.current, { opacity: 1, filter: 'blur(0px)' });
 
       // This timeline is never scrubbed by raw scroll position. It's a fixed
-      // score of camera moves, paused, that we scrub with tl.tweenTo() one
-      // discrete step at a time — every wheel notch / swipe plays exactly
-      // one of these pre-built transitions from start to finish.
+      // score of camera moves, paused, that we play with tl.tweenTo() one
+      // clip at a time — a scroll only presses "play" on the next clip.
       const tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.inOut' } });
       tlRef.current = tl;
 
@@ -143,10 +141,13 @@ function ZUIHubStory() {
         tl.to(ring, { opacity: 1, scale: 1, duration: T.in * 0.6, ease: style.ringEase }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.in * 0.45, ease: 'power2.out' }, `>-${T.in * 0.25}`);
         // Anchored on the phase's own start time (not chained with '<') so it
-        // never shifts the ring/desc/title relative-position sequence above.
-        tl.to(others, { opacity: 0.15, filter: 'blur(10px)', duration: T.in, ease: 'power2.out' }, t0);
+        // never shifts the ring/desc sequence above.
+        tl.to(others, { opacity: 0.2, filter: 'blur(8px)', duration: T.in, ease: 'power2.out' }, t0);
         tl.addLabel(`zoom1-${i}`);
-        stops.push(`zoom1-${i}`);
+        // Reading pause: the camera parks at zoom-1 for a beat (relative
+        // weight T.hold of the whole clip) so the block's title/description
+        // can actually be read before the dive continues into zoom-2.
+        tl.to({}, { duration: T.hold });
 
         // 2. ZOOM-1 → ZOOM-2  (dive in with a quick colored flash)
         tl.to(ring, { opacity: 0, scale: 1.08, duration: T.deepen * 0.35, ease: 'power2.in' });
@@ -162,15 +163,18 @@ function ZUIHubStory() {
         tl.to(overlay, { opacity: 1, pointerEvents: 'auto', duration: T.deepen * 0.55, ease: 'power2.inOut' }, `>-${T.deepen * 0.45}`);
         if (flash) {
           tl.set(flash, { '--flash-color': ringColor }, t0);
-          tl.to(flash, { opacity: 0.55, duration: T.deepen * 0.25, ease: 'power1.in' }, t0);
+          tl.to(flash, { opacity: 0.35, duration: T.deepen * 0.25, ease: 'power1.in' }, t0);
           tl.to(flash, { opacity: 0, duration: T.deepen * 0.5, ease: 'power1.out' }, t0 + T.deepen * 0.25);
         }
         tl.addLabel(`zoom2-${i}`);
+        // The zoom-2 screens are the ONLY resting stops of the story (plus
+        // the initial overview): one scroll always carries the viewer all
+        // the way to the next universe's zoom-2.
         stops.push(`zoom2-${i}`);
 
-        // 3+4. ZOOM-2 → OVERVIEW, one continuous dézoom with no stop at
-        // zoom-1 on the way out — matches the "big dézoom" the story needs
-        // between one universe's detail and the next universe's overview.
+        // 3. ZOOM-2 → OVERVIEW, one continuous dézoom with a brief pass
+        // through zoom-1 on the way out, then straight into the next
+        // universe's flight (this whole path plays as ONE clip per scroll).
         tl.to(overlay, { opacity: 0, pointerEvents: 'none', duration: T.surface * 0.45, ease: 'power2.in' });
         flyTo(p.x, p.y, ZOOM_1, T.surface, 'power2.out');
         tl.to(desc, { opacity: 1, y: 0, duration: T.surface * 0.5 }, `>-${T.surface * 0.35}`);
@@ -185,11 +189,6 @@ function ZUIHubStory() {
         flyTo(0, 0, OVERVIEW, T.out, 'power3.inOut');
         tl.to(others, { opacity: 1, filter: 'blur(0px)', duration: T.out, ease: 'power2.inOut' }, t0);
         tl.addLabel(`overview-${i + 1}`);
-        // Every intermediate "back to overview" is NOT its own stop — it
-        // plays straight through into the next universe's zoom-in as a
-        // single uninterrupted clip (see durationFor's "outIn" case), so a
-        // scroll never dead-ends on a bare overview between two universes.
-        // Only the very first and very last overview are real resting stops.
         const isLast = i === positions.length - 1;
         if (isLast) stops.push(`overview-${i + 1}`);
       });
@@ -199,29 +198,21 @@ function ZUIHubStory() {
     return () => ctx.revert();
   }, []);
 
-  // -- Step engine: one discrete wheel notch / swipe = exactly one step ----
-
-  const stepUniverseIndex = (stepIdx) => {
-    const name = stopsRef.current[stepIdx] || '';
-    return name.startsWith('overview') ? -1 : Number(name.split('-')[1]);
-  };
+  // -- Step engine: one scroll = one full clip to the next zoom-2 ----------
 
   const durationFor = (fromIdx, toIdx) => {
     if (Math.abs(toIdx - fromIdx) > 1) return STEP_DURATION.jump;
     const stops = stopsRef.current;
     const a = stops[Math.min(fromIdx, toIdx)] || '';
     const b = stops[Math.max(fromIdx, toIdx)] || '';
-    if (a.startsWith('overview')) return STEP_DURATION.in; // overview <-> zoom-1
-    if (a.startsWith('zoom1') && b.startsWith('zoom2')) return STEP_DURATION.deepen; // zoom-1 <-> zoom-2
+    if (a.startsWith('overview')) return STEP_DURATION.inDeep; // first overview <-> first zoom-2
     if (b.startsWith('overview')) return STEP_DURATION.out; // last zoom-2 <-> final overview
-    return STEP_DURATION.outIn; // zoom-2 of one universe <-> zoom-1 of the next (merged dézoom + re-zoom)
+    return STEP_DURATION.next; // zoom-2 <-> next universe's zoom-2 (full dézoom + re-zoom clip)
   };
 
   // A scroll intent that arrives while a transition is still playing isn't
   // dropped — it's banked in pendingDirRef and fired the instant the current
-  // clip finishes, like a queued video. That's what makes "scroll again
-  // while it's mid-flight" actually count instead of silently doing
-  // nothing (which read as "I have to scroll it so many times").
+  // clip finishes, like a queued video.
   const goToStep = (rawIndex) => {
     const stops = stopsRef.current;
     const tl = tlRef.current;
@@ -231,20 +222,15 @@ function ZUIHubStory() {
     const duration = durationFor(currentStepRef.current, clamped);
     isAnimatingRef.current = true;
     currentStepRef.current = clamped;
-    setActiveIndex(stepUniverseIndex(clamped));
     tl.tweenTo(stops[clamped], {
       duration,
       ease: STEP_EASE,
       onComplete: () => {
         isAnimatingRef.current = false;
         // Once the very first or very last stop is genuinely reached (the
-        // clip has finished playing, not just been triggered), snap the
-        // real scroll position to the trigger's start/end. We don't scrub
-        // scroll position 1:1 with story progress, so without this the
-        // physical scroll could still be sitting deep inside the pinned
-        // range even though the story is logically done — forcing the
-        // user to keep scrolling through dead space before ScrollTrigger's
-        // pin would actually let go. This makes it release immediately.
+        // clip has finished playing), snap the real scroll position to the
+        // trigger's start/end so ScrollTrigger's pin releases immediately
+        // instead of requiring the user to scroll through dead space.
         const st = stRef.current;
         if (st) {
           if (clamped === 0) st.scroll(st.start);
@@ -260,57 +246,29 @@ function ZUIHubStory() {
     });
   };
 
-  // Keep the rail's visibility in sync with whether this section currently
-  // fills the viewport (i.e. is the one the user is "inside" right now).
-  useEffect(() => {
-    let raf = null;
-    const check = () => {
-      raf = null;
-      if (!rootRef.current) return;
-      setInSection(Math.abs(rootRef.current.getBoundingClientRect().top) < 2);
-    };
-    const onScroll = () => {
-      if (raf == null) raf = requestAnimationFrame(check);
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll, { passive: true });
-    check();
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, []);
-
-  // The whole step engine. Pinning the section — and making that pin
-  // actually reliable on mobile — is delegated entirely to GSAP's
-  // ScrollTrigger instead of a hand-rolled sticky/anchor/scrollTo system.
-  // That hand-rolled version kept needing new patches (skipping on a big
-  // jump, drifting on reload, fighting active touch and feeling janky) —
-  // symptoms of reinventing a pin engine badly. ScrollTrigger's pin is the
-  // same technique battle-tested across browsers, and
-  // `ScrollTrigger.normalizeScroll(true)` specifically exists to iron out
-  // the mobile touch/momentum inconsistencies we were chasing by hand.
-  //
-  // We still don't scrub the camera 1:1 with scroll position — a tiny
-  // scroll is just the "play" signal (see THRESHOLD below), and the
-  // animation's own duration (STEP_DURATION) paces the story regardless of
-  // how hard or fast the user scrolled. A scroll intent arriving mid-clip
-  // is banked (see goToStep's onComplete) instead of dropped.
+  // The whole pin + capture engine is delegated to GSAP's ScrollTrigger —
+  // `normalizeScroll(true)` irons out mobile touch/momentum inconsistencies.
+  // We never scrub the camera 1:1 with scroll position: a tiny scroll is
+  // just the "play" signal, and the clip's own duration paces the story.
   useEffect(() => {
     ScrollTrigger.normalizeScroll(true);
 
-    const THRESHOLD = 18;
-    const GESTURE_TIMEOUT = 400;
+    // Two thresholds: a tiny nudge fires the next clip when the story is at
+    // rest, but banking a step WHILE a clip is playing demands a much more
+    // deliberate scroll — normalizeScroll's momentum tail keeps trickling
+    // small deltas (sometimes with pauses long enough to look like a new
+    // gesture) for a while after a flick, and with a single low threshold
+    // that tail could re-fire and queue a second, unwanted step.
+    const FIRE_THRESHOLD = 18;
+    const BANK_THRESHOLD = 90;
+    const GESTURE_TIMEOUT = 600;
 
     const st = ScrollTrigger.create({
       trigger: rootRef.current,
       start: 'top top',
-      // Generous fixed scroll budget for the whole story so a fast scroll
-      // session can't physically outrun our step-by-step processing before
-      // the pin would naturally release (goToStep's onComplete already
-      // force-releases the instant the story is actually finished, so this
-      // never needs to be scrolled through in full).
+      // Generous fixed scroll budget so a fast scroll session can't
+      // physically outrun the step-by-step processing (goToStep force-
+      // releases the instant the story is actually finished).
       end: () => `+=${Math.max(stopsRef.current.length, 1) * 800}`,
       pin: true,
       pinSpacing: true,
@@ -326,23 +284,33 @@ function ZUIHubStory() {
 
         const atStart = currentStepRef.current === 0;
         const atEnd = currentStepRef.current === stops.length - 1;
-        // Let native scroll take over: at the very first stop scrolling
-        // further up (back to the previous section) or the very last stop
-        // scrolling further down (on to the next section) — ScrollTrigger's
-        // pin itself handles the actual release at start/end reliably.
+        // Let native scroll take over at the story's two ends.
         if (atStart && delta < 0) return;
         if (atEnd && delta > 0) return;
 
+        // One physical gesture = exactly one step. Scroll deltas that keep
+        // arriving within GESTURE_TIMEOUT of each other are the SAME
+        // gesture (including the momentum tail normalizeScroll produces
+        // after a flick) — once that gesture has fired its step, every
+        // further delta it emits is ignored. Only a real pause in the
+        // stream starts a new gesture that can fire the next step.
         const now = performance.now();
-        if (now - lastGestureTimeRef.current > GESTURE_TIMEOUT || Math.sign(accumRef.current) === -Math.sign(delta)) {
+        const isNewGesture = now - lastGestureTimeRef.current > GESTURE_TIMEOUT;
+        if (isNewGesture) {
+          accumRef.current = 0;
+          firedThisGestureRef.current = false;
+        } else if (Math.sign(accumRef.current) === -Math.sign(delta)) {
           accumRef.current = 0;
         }
         lastGestureTimeRef.current = now;
+        if (firedThisGestureRef.current) return;
         accumRef.current += delta;
 
-        if (Math.abs(accumRef.current) >= THRESHOLD) {
+        const threshold = isAnimatingRef.current ? BANK_THRESHOLD : FIRE_THRESHOLD;
+        if (Math.abs(accumRef.current) >= threshold) {
           const dir = accumRef.current > 0 ? 1 : -1;
           accumRef.current = 0;
+          firedThisGestureRef.current = true;
           if (isAnimatingRef.current) {
             pendingDirRef.current = dir;
           } else {
@@ -356,42 +324,29 @@ function ZUIHubStory() {
     return () => st.kill();
   }, []);
 
-  const goToLabel = (label) => {
-    const idx = stopsRef.current.indexOf(label);
-    if (idx !== -1) goToStep(idx);
-  };
-
   return (
-    // ScrollTrigger's `pin: true` handles wrapping this in its own spacer
-    // and pinning it at top:0 for the whole scroll budget above — no more
-    // hand-rolled sticky wrapper needed.
+    // ScrollTrigger's `pin: true` wraps this in its own spacer and pins it
+    // at top:0 for the whole scroll budget above.
     <section
       ref={rootRef}
-      data-navbar-theme="dark"
-      className="relative bg-ink-900 h-[100svh] overflow-hidden"
-      aria-label="Les 6 univers de Moledi Events"
+      className="relative bg-ink-100 h-[100svh] overflow-hidden"
+      aria-label="Les 6 univers de Moledi Event"
     >
-      <div className="absolute inset-0 bg-gradient-to-br from-ink-900 via-[#0F1E3D] to-ink-900" />
-      {/* Organic blob shapes (asymmetric border-radius, not perfect circles)
-          slowly drifting — reads as a soft curved backdrop rather than the
-          flat gradient + circular glows it replaced. */}
+      {/* Light curved backdrop straight from the charter: soft white base,
+          organic orange/blue blobs, two sweeping curves. No hard divider
+          with the neighbouring sections — the same light family of tones
+          continues above and below. */}
+      <div className="absolute inset-0 bg-gradient-to-b from-white via-ink-100 to-white" />
       <div
-        className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] bg-primary/15 blur-[120px] animate-[drift1_26s_ease-in-out_infinite]"
+        className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] bg-primary/10 blur-[120px] animate-[drift1_26s_ease-in-out_infinite]"
         style={{ borderRadius: '42% 58% 65% 35% / 45% 40% 60% 55%', willChange: 'opacity, transform', transform: 'translateZ(0)' }}
       />
       <div
-        className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] bg-secondary/20 blur-[120px] animate-[drift2_32s_ease-in-out_infinite]"
+        className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] bg-secondary/10 blur-[120px] animate-[drift2_32s_ease-in-out_infinite]"
         style={{ borderRadius: '60% 40% 30% 70% / 55% 65% 35% 45%', transform: 'translateZ(0)' }}
       />
-      <div
-        className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50rem] h-[50rem] bg-primary/[0.04] blur-[80px]"
-        style={{ borderRadius: '48% 52% 38% 62% / 52% 45% 55% 48%', transform: 'translate(-50%, -50%) translateZ(0)' }}
-      />
-      {/* Two large sweeping curves (SVG paths) that arc across the whole
-          section, reinforcing the "curved canvas" feel the flat gradient
-          alone couldn't give. */}
       <svg
-        className="pointer-events-none absolute inset-0 w-full h-full opacity-[0.07]"
+        className="pointer-events-none absolute inset-0 w-full h-full opacity-[0.12]"
         viewBox="0 0 1000 1000"
         preserveAspectRatio="none"
       >
@@ -434,73 +389,32 @@ function ZUIHubStory() {
           overlayRef={(el) => (overlayRefs.current[i] = el)}
         />
       ))}
-
-      <ProgressRail
-        universes={universes}
-        visible={inSection}
-        activeIndex={activeIndex}
-        onSelect={(i) => goToLabel(`zoom1-${i}`)}
-        onHome={() => goToLabel('overview-0')}
-      />
     </section>
   );
 }
 
-function ProgressRail({ universes, visible, activeIndex, onSelect, onHome }) {
+function CenterLogo({ logoRef }) {
   return (
-    <div
-      className={`hidden sm:flex fixed z-40 right-3 sm:right-6 top-1/2 -translate-y-1/2 flex-col items-center gap-3 transition-opacity duration-500 ${
-        visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-      }`}
-      aria-hidden={!visible}
-    >
-      <button
-        type="button"
-        onClick={onHome}
-        aria-label="Vue d'ensemble"
-        className={`w-2.5 h-2.5 rounded-full border transition-all duration-300 ${
-          activeIndex === -1 ? 'bg-white border-white scale-125' : 'bg-transparent border-white/40 hover:border-white/80'
-        }`}
-      />
-      <span className="w-px h-4 bg-white/20" />
-      {universes.map((univ, i) => (
-        <button
-          key={univ.id}
-          type="button"
-          onClick={() => onSelect(i)}
-          aria-label={univ.label}
-          className="group relative flex items-center justify-center w-4 h-4"
-        >
-          <span
-            className={`w-2.5 h-2.5 rounded-full border transition-all duration-300 ${
-              activeIndex === i ? 'scale-125' : 'bg-transparent border-white/40 group-hover:border-white/80'
-            }`}
-            style={activeIndex === i ? { backgroundColor: RING_COLORS[i % RING_COLORS.length], borderColor: RING_COLORS[i % RING_COLORS.length] } : undefined}
-          />
-          <span className="pointer-events-none absolute right-6 whitespace-nowrap text-[11px] font-semibold text-white/90 bg-ink-900/80 backdrop-blur-sm px-2.5 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            {univ.label}
-          </span>
-        </button>
-      ))}
+    <div ref={logoRef} className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: 0, top: 0, willChange: 'opacity, filter' }}>
+      <div className="relative w-28 h-28 sm:w-36 sm:h-36 flex items-center justify-center">
+        <div className="absolute inset-[-20px] rounded-full bg-primary/15 blur-3xl animate-pulse" />
+        <div className="absolute inset-[-8px] rounded-full border border-primary/25 animate-[spin_20s_linear_infinite]" />
+        <div className="relative w-24 h-24 sm:w-30 sm:h-30 rounded-full bg-white shadow-[0_18px_50px_-12px_rgba(255,106,0,0.4)] flex items-center justify-center">
+          <LogoImg />
+        </div>
+      </div>
     </div>
   );
 }
 
-function CenterLogo({ logoRef }) {
-  const [src, setSrc] = useState(media.logoLight);
+function LogoImg() {
   return (
-    <div ref={logoRef} className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: 0, top: 0, willChange: 'opacity, filter' }}>
-      <div className="relative w-28 h-28 sm:w-36 sm:h-36 flex items-center justify-center">
-        <div className="absolute inset-[-20px] rounded-full bg-primary/20 blur-3xl animate-pulse" />
-        <div className="absolute inset-[-8px] rounded-full border border-primary/20 animate-[spin_20s_linear_infinite]" />
-        <img
-          src={src}
-          alt="Moledi Events"
-          onError={() => setSrc(media.logoFallback)}
-          className="relative w-20 h-20 sm:w-26 sm:h-26 object-contain drop-shadow-[0_8px_24px_rgba(255,106,0,0.5)]"
-        />
-      </div>
-    </div>
+    <img
+      src={media.logo}
+      alt="Moledi Event"
+      onError={(e) => { e.currentTarget.src = media.logoFallback; }}
+      className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
+    />
   );
 }
 
@@ -526,7 +440,7 @@ function Block({ univ, pos, imgRef, descRef, ringRef, blockRef, titleRef }) {
         }}
       />
       <div
-        className="relative rounded-[28px] overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6)]"
+        className="relative rounded-[28px] overflow-hidden shadow-[0_24px_60px_-18px_rgba(11,19,36,0.35)] bg-white"
         style={{ height: BLOCK_H }}
       >
         <img
@@ -536,7 +450,7 @@ function Block({ univ, pos, imgRef, descRef, ringRef, blockRef, titleRef }) {
           className="absolute inset-0 w-full h-full object-cover"
           style={{ willChange: 'transform' }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/5" />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink-900/90 via-ink-900/25 to-transparent" />
 
         <div className="absolute inset-x-0 bottom-0 p-6 sm:p-8">
           <h3
@@ -546,7 +460,7 @@ function Block({ univ, pos, imgRef, descRef, ringRef, blockRef, titleRef }) {
           >
             {univ.label}
           </h3>
-          <p ref={descRef} className="text-white/85 text-sm sm:text-base leading-relaxed normal-case mt-3">
+          <p ref={descRef} className="text-white/90 text-sm sm:text-base leading-relaxed normal-case mt-3">
             {univ.definition}
           </p>
         </div>
@@ -557,7 +471,7 @@ function Block({ univ, pos, imgRef, descRef, ringRef, blockRef, titleRef }) {
 
 function IconSteps({ color }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round">
       <path d="M4 6h4M4 12h4M4 18h4" />
       <path d="M12 6h8M12 12h8M12 18h8" opacity="0.5" />
     </svg>
@@ -566,7 +480,7 @@ function IconSteps({ color }) {
 
 function IconPeople({ color }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="9" cy="8" r="3" />
       <path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
       <path d="M16 8.5a3 3 0 1 0 0-5.4" opacity="0.6" />
@@ -577,7 +491,7 @@ function IconPeople({ color }) {
 
 function IconShield({ color }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3l7 3v6c0 4.5-3 7.7-7 9-4-1.3-7-4.5-7-9V6l7-3z" />
       <path d="M9 12l2 2 4-4" />
     </svg>
@@ -587,16 +501,16 @@ function IconShield({ color }) {
 function StepsWidget({ steps, color, layout }) {
   if (layout === 'row') {
     return (
-      <div className="flex flex-col sm:flex-row gap-5 sm:gap-4">
+      <div className="flex flex-col sm:flex-row gap-3">
         {steps.map((step, idx) => (
-          <div key={idx} className="flex-1 flex sm:flex-col items-start gap-3 sm:gap-4">
+          <div key={idx} className="flex-1 flex sm:flex-col items-start gap-2.5">
             <span
-              className="flex-none w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-ink-900"
+              className="flex-none w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
               style={{ backgroundColor: color }}
             >
               {idx + 1}
             </span>
-            <p className="text-white/85 text-sm sm:text-base leading-relaxed normal-case pt-1 sm:pt-0">{step}</p>
+            <p className="text-ink-700 text-xs sm:text-[13px] leading-snug normal-case">{step}</p>
           </div>
         ))}
       </div>
@@ -605,17 +519,17 @@ function StepsWidget({ steps, color, layout }) {
   return (
     <ol>
       {steps.map((step, idx) => (
-        <li key={idx} className="flex gap-3 sm:gap-4">
+        <li key={idx} className="flex gap-3">
           <div className="flex flex-col items-center">
             <span
-              className="flex-none w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold text-ink-900"
+              className="flex-none w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[11px] sm:text-xs font-bold text-white"
               style={{ backgroundColor: color }}
             >
               {idx + 1}
             </span>
-            {idx < steps.length - 1 && <span className="w-px flex-1 min-h-[1.25rem] my-1 bg-white/15" />}
+            {idx < steps.length - 1 && <span className="w-px flex-1 min-h-[0.8rem] my-1 bg-ink-200" />}
           </div>
-          <p className="text-white/85 text-sm sm:text-base leading-relaxed normal-case pb-4">{step}</p>
+          <p className="text-ink-700 text-xs sm:text-sm leading-snug normal-case pb-2.5">{step}</p>
         </li>
       ))}
     </ol>
@@ -624,11 +538,11 @@ function StepsWidget({ steps, color, layout }) {
 
 function TagsWidget({ tags }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-1.5">
       {tags.map((tag, idx) => (
         <span
           key={idx}
-          className="text-xs sm:text-sm text-white/90 px-3 py-1.5 rounded-full border border-white/15 bg-white/[0.04] normal-case"
+          className="text-[11px] sm:text-xs text-ink-700 px-2.5 py-1 rounded-full border border-ink-200 bg-white normal-case"
         >
           {tag}
         </span>
@@ -638,24 +552,33 @@ function TagsWidget({ tags }) {
 }
 
 function Panel({ children, className = '' }) {
-  return <div className={`rounded-3xl bg-white/[0.06] border border-white/10 p-5 sm:p-7 backdrop-blur-sm ${className}`}>{children}</div>;
+  return (
+    <div className={`rounded-2xl bg-white border border-ink-200 p-4 sm:p-5 shadow-[0_10px_30px_-18px_rgba(11,19,36,0.25)] ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 function PanelHeading({ icon, color, children }) {
   return (
-    <h4 className="flex items-center gap-2 text-white font-heading text-sm sm:text-base tracking-wide uppercase mb-5">
+    <h4 className="flex items-center gap-2 text-ink-900 font-heading text-xs sm:text-sm tracking-wide uppercase mb-3">
       {icon({ color })}
       {children}
     </h4>
   );
 }
 
-// Each universe gets its own genuinely different way of presenting the
-// same three pieces of data (steps / who / trust) — not a shared template
-// reshuffled, but a distinct visual metaphor picked to fit that universe:
-// a timeline for a vote's stages, a ticket stub for an event, a radial
-// dial for a donation goal, a progress bar for crowdfunding milestones, a
-// matchmaking split for sponsoring, and a scattered ticket grid for a raffle.
+function Thumb({ src, className = '' }) {
+  return (
+    <div className={`relative overflow-hidden rounded-xl ${className}`}>
+      <img src={src} alt="" loading="lazy" className="w-full h-full object-cover" />
+    </div>
+  );
+}
+
+// Each universe gets its own genuinely different way of presenting the same
+// three pieces of data (steps / who / trust), with real imagery inside, all
+// sized to fit a single viewport on desktop (no internal scrolling).
 const DETAIL_LAYOUTS = [TimelineDetail, TicketDetail, RadialDetail, ProgressDetail, SplitDetail, RaffleDetail];
 
 function ImmersiveOverlay({ univ, overlayRef, index }) {
@@ -668,128 +591,129 @@ function ImmersiveOverlay({ univ, overlayRef, index }) {
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-30 overflow-y-auto"
+      className="fixed inset-0 z-30 overflow-y-auto lg:overflow-hidden"
       style={{ pointerEvents: 'none' }}
     >
       <div className="absolute inset-0">
-        <img src={univ.image} alt="" className="w-full h-full object-cover scale-110" />
-        <div className="absolute inset-0 bg-black/80" />
+        <img src={univ.image} alt="" className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-white/[0.93]" />
         <div
           className="absolute inset-0"
-          style={{ background: `radial-gradient(circle at 50% 0%, ${color}22, transparent 60%)` }}
+          style={{ background: `radial-gradient(circle at 50% 0%, ${color}14, transparent 55%)` }}
         />
       </div>
 
-      <div className="relative min-h-full flex items-center justify-center px-4 py-14 sm:py-20">
+      <div className="relative min-h-full lg:h-full flex items-center justify-center px-4 pt-20 pb-8 lg:pt-24 lg:pb-6">
         <div className="w-full max-w-5xl">
-          <div className="text-center mb-8 sm:mb-12">
+          <div className="text-center mb-5 sm:mb-6">
             <span
-              className="inline-block text-[10px] sm:text-[11px] tracking-[0.3em] uppercase font-semibold mb-3 px-3 py-1 rounded-full border"
-              style={{ color, borderColor: `${color}66` }}
+              className="inline-block text-[9px] sm:text-[10px] tracking-[0.3em] uppercase font-semibold mb-2 px-3 py-1 rounded-full border bg-white/70"
+              style={{ color, borderColor: `${color}55` }}
             >
-              Univers Moledi Events
+              Univers Moledi Event
             </span>
-            <h3 className="font-heading text-white text-3xl sm:text-5xl normal-case drop-shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+            <h3 className="font-heading text-ink-900 text-2xl sm:text-3xl lg:text-4xl normal-case">
               {univ.label}
             </h3>
-            <p className="mt-4 max-w-2xl mx-auto text-white/70 text-sm sm:text-base leading-relaxed normal-case">
+            <p className="mt-2 max-w-2xl mx-auto text-ink-700 text-xs sm:text-sm leading-relaxed normal-case">
               {univ.definition}
             </p>
           </div>
 
-          <Layout steps={steps} tags={tags} trust={trust} color={color} />
+          <Layout univ={univ} steps={steps} tags={tags} trust={trust} color={color} />
         </div>
       </div>
     </div>
   );
 }
 
-// Votes & Scrutins — a connected vertical timeline: fits a scrutiny's
-// sequential, procedural feel (create → vote → certify).
-function TimelineDetail({ steps, tags, trust, color }) {
+// Votes & Scrutins — a connected vertical timeline beside a tall visual.
+function TimelineDetail({ univ, steps, tags, trust, color }) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
-      <Panel className="lg:col-span-3">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4">
+      <Thumb src={univ.nested.how.image} className="hidden lg:block lg:col-span-3 min-h-[16rem]" />
+      <Panel className="lg:col-span-5">
         <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
         <StepsWidget steps={steps} color={color} layout="column" />
       </Panel>
-      <div className="lg:col-span-2 flex flex-col gap-4 sm:gap-6">
+      <div className="lg:col-span-4 flex flex-col gap-3 sm:gap-4">
         <Panel>
           <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
           <TagsWidget tags={tags} />
         </Panel>
-        <div className="rounded-3xl p-5 sm:p-7 border backdrop-blur-sm" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+        <div className="rounded-2xl p-4 sm:p-5 border flex-1" style={{ background: `${color}0d`, borderColor: `${color}35` }}>
           <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
-          <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
+          <p className="text-ink-700 text-xs sm:text-sm leading-snug normal-case">{trust.text}</p>
         </div>
       </div>
     </div>
   );
 }
 
-// Billetterie & Événementiel — a horizontal boarding-pass / ticket stub:
-// steps run left-to-right like stages printed on a ticket, with a
-// perforated dashed divider before the "stub" (who/trust) half.
-function TicketDetail({ steps, tags, trust, color }) {
+// Billetterie — a boarding-pass: photo on the left of the ticket, steps as
+// stages printed across it, perforated divider before the who/trust stub.
+function TicketDetail({ univ, steps, tags, trust, color }) {
   return (
-    <div className="rounded-[28px] bg-white/[0.06] border border-white/10 backdrop-blur-sm overflow-hidden">
-      <div className="p-6 sm:p-8">
-        <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
-        <div className="flex flex-col sm:flex-row items-start sm:items-stretch gap-6 sm:gap-0">
-          {steps.map((step, idx) => (
-            <div key={idx} className="flex-1 flex sm:flex-col items-center gap-3 sm:gap-4 relative">
-              <span
-                className="flex-none w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-ink-900"
-                style={{ backgroundColor: color }}
-              >
-                {idx + 1}
-              </span>
-              <p className="text-white/85 text-sm leading-snug normal-case text-left sm:text-center">{step}</p>
-              {idx < steps.length - 1 && (
+    <div className="rounded-3xl bg-white border border-ink-200 shadow-[0_18px_50px_-20px_rgba(11,19,36,0.3)] overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-4">
+        <Thumb src={univ.nested.how.image} className="hidden lg:block rounded-none min-h-full" />
+        <div className="lg:col-span-3 p-4 sm:p-6">
+          <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
+          <div className="flex flex-col sm:flex-row items-start sm:items-stretch gap-4 sm:gap-0">
+            {steps.map((step, idx) => (
+              <div key={idx} className="flex-1 flex sm:flex-col items-center gap-2.5 relative">
                 <span
-                  className="hidden sm:block absolute top-5 left-[calc(50%+28px)] right-[calc(-50%+28px)] border-t-2 border-dashed"
-                  style={{ borderColor: `${color}55` }}
-                />
-              )}
-            </div>
-          ))}
+                  className="flex-none w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                  style={{ backgroundColor: color }}
+                >
+                  {idx + 1}
+                </span>
+                <p className="text-ink-700 text-xs leading-snug normal-case text-left sm:text-center sm:px-2">{step}</p>
+                {idx < steps.length - 1 && (
+                  <span
+                    className="hidden sm:block absolute top-4 left-[calc(50%+22px)] right-[calc(-50%+22px)] border-t-2 border-dashed"
+                    style={{ borderColor: `${color}45` }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-      <div className="relative border-t-2 border-dashed border-white/15 mx-6 sm:mx-10">
-        <span className="absolute -left-[38px] -top-3 w-6 h-6 rounded-full bg-ink-900" />
-        <span className="absolute -right-[38px] -top-3 w-6 h-6 rounded-full bg-ink-900" />
+      <div className="relative border-t-2 border-dashed border-ink-200 mx-5 sm:mx-8">
+        <span className="absolute -left-[30px] -top-2.5 w-5 h-5 rounded-full bg-ink-100" />
+        <span className="absolute -right-[30px] -top-2.5 w-5 h-5 rounded-full bg-ink-100" />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 p-6 sm:p-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5 p-4 sm:p-6">
         <div>
           <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
           <TagsWidget tags={tags} />
         </div>
-        <div className="rounded-2xl p-5 border" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+        <div className="rounded-xl p-3.5 border" style={{ background: `${color}0d`, borderColor: `${color}35` }}>
           <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
-          <p className="text-white/90 text-sm leading-relaxed normal-case">{trust.text}</p>
+          <p className="text-ink-700 text-xs leading-snug normal-case">{trust.text}</p>
         </div>
       </div>
     </div>
   );
 }
 
-// Système de Dons & Cagnottes — a radial dial: the trust statement sits at
-// the center like a goal, with the steps orbiting it as satellites, echoing
-// a fundraising meter rather than a plain list.
-function RadialDetail({ steps, tags, trust, color }) {
+// Dons & Cagnottes — a radial dial (trust at the centre, steps orbiting)
+// beside the who/imagery column: reads like a fundraising meter.
+function RadialDetail({ univ, steps, tags, trust, color }) {
   return (
-    <div className="flex flex-col items-center gap-8 sm:gap-12">
-      <div className="relative w-full max-w-md aspect-square mx-auto hidden sm:flex items-center justify-center">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 items-center">
+      <div className="relative w-full max-w-[24rem] aspect-square mx-auto hidden sm:flex items-center justify-center">
         <svg viewBox="0 0 200 200" className="absolute inset-0 w-full h-full">
-          <circle cx="100" cy="100" r="88" fill="none" stroke={`${color}33`} strokeWidth="2" />
+          <circle cx="100" cy="100" r="88" fill="none" stroke={`${color}30`} strokeWidth="2" />
           <circle cx="100" cy="100" r="88" fill="none" stroke={color} strokeWidth="3" strokeDasharray="180 400" strokeLinecap="round" />
         </svg>
         <div
-          className="relative z-10 w-[58%] aspect-square rounded-full flex flex-col items-center justify-center text-center px-6"
-          style={{ background: `${color}14`, border: `1px solid ${color}40` }}
+          className="relative z-10 w-[56%] aspect-square rounded-full flex flex-col items-center justify-center text-center px-5 bg-white shadow-lg"
+          style={{ border: `1.5px solid ${color}40` }}
         >
           {IconShield({ color })}
-          <p className="mt-2 text-white/90 text-xs leading-relaxed normal-case">{trust.text}</p>
+          <p className="mt-1.5 text-ink-700 text-[10px] leading-snug normal-case">{trust.text}</p>
         </div>
         {steps.map((step, idx) => {
           const angle = (360 / steps.length) * idx - 90;
@@ -799,90 +723,96 @@ function RadialDetail({ steps, tags, trust, color }) {
           return (
             <div
               key={idx}
-              className="absolute w-[34%] rounded-2xl p-3 text-center bg-white/[0.07] border border-white/15 backdrop-blur-sm"
+              className="absolute w-[36%] rounded-xl p-2.5 text-center bg-white border border-ink-200 shadow-md"
               style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}
             >
               <span
-                className="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold text-ink-900 mb-1.5"
+                className="inline-flex w-5 h-5 rounded-full items-center justify-center text-[10px] font-bold text-white mb-1"
                 style={{ backgroundColor: color }}
               >
                 {idx + 1}
               </span>
-              <p className="text-white/85 text-xs leading-snug normal-case">{step}</p>
+              <p className="text-ink-700 text-[10px] leading-snug normal-case">{step}</p>
             </div>
           );
         })}
       </div>
-      {/* Mobile: the orbit doesn't fit comfortably, so the same content
-          becomes a simple stacked read instead of a cramped circle. */}
-      <div className="sm:hidden w-full flex flex-col gap-4">
-        <div className="rounded-3xl p-5 border backdrop-blur-sm text-center" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+      {/* Mobile: same content as a simple stacked read */}
+      <div className="sm:hidden flex flex-col gap-3">
+        <div className="rounded-2xl p-4 border text-center bg-white" style={{ borderColor: `${color}35` }}>
           {IconShield({ color })}
-          <p className="mt-2 text-white/90 text-sm leading-relaxed normal-case">{trust.text}</p>
+          <p className="mt-1.5 text-ink-700 text-xs leading-snug normal-case">{trust.text}</p>
         </div>
-        <StepsWidget steps={steps} color={color} layout="column" />
+        <Panel>
+          <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
+          <StepsWidget steps={steps} color={color} layout="column" />
+        </Panel>
       </div>
-      <Panel className="w-full">
-        <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
-        <TagsWidget tags={tags} />
-      </Panel>
+      <div className="flex flex-col gap-3 sm:gap-4">
+        <Thumb src={univ.nested.who.image} className="hidden lg:block h-32" />
+        <Panel>
+          <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
+          <TagsWidget tags={tags} />
+        </Panel>
+      </div>
     </div>
   );
 }
 
-// Crowdfunding — a thick horizontal progress bar with the steps as labeled
-// milestones along it, echoing a funding goal filling up.
-function ProgressDetail({ steps, tags, trust, color }) {
+// Crowdfunding — a milestone progress bar with panels below.
+function ProgressDetail({ univ, steps, tags, trust, color }) {
   return (
-    <div className="flex flex-col gap-6 sm:gap-8">
+    <div className="flex flex-col gap-3 sm:gap-4">
       <Panel>
         <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
-        <div className="pt-1 pb-2">
-          <div className="h-3 rounded-full bg-white/10 overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: '72%', background: `linear-gradient(90deg, ${color}, ${color}aa)` }} />
+        <div className="pt-1">
+          <div className="h-2.5 rounded-full bg-ink-100 overflow-hidden">
+            <div className="h-full rounded-full" style={{ width: '72%', background: `linear-gradient(90deg, ${color}, ${color}99)` }} />
           </div>
-          <div className="flex justify-between mt-5 gap-2">
+          <div className="flex justify-between mt-3 gap-2">
             {steps.map((step, idx) => (
               <div key={idx} className="flex-1 flex flex-col items-center text-center">
-                <span className="w-3 h-3 rounded-full mb-3" style={{ backgroundColor: color }} />
-                <p className="text-white/85 text-xs sm:text-sm leading-snug normal-case">{step}</p>
+                <span className="w-2.5 h-2.5 rounded-full mb-2" style={{ backgroundColor: color }} />
+                <p className="text-ink-700 text-[11px] sm:text-xs leading-snug normal-case">{step}</p>
               </div>
             ))}
           </div>
         </div>
       </Panel>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <Thumb src={univ.nested.who.image} className="hidden sm:block min-h-[8rem]" />
         <Panel>
           <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
           <TagsWidget tags={tags} />
         </Panel>
-        <div className="rounded-3xl p-5 sm:p-7 border backdrop-blur-sm" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+        <div className="rounded-2xl p-4 sm:p-5 border" style={{ background: `${color}0d`, borderColor: `${color}35` }}>
           <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
-          <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
+          <p className="text-ink-700 text-xs leading-snug normal-case">{trust.text}</p>
         </div>
       </div>
     </div>
   );
 }
 
-// Sponsoring — a split-screen "matchmaking" layout: organizer's steps on
-// one side, the brand-facing value prop (who/trust) tinted on the other.
-function SplitDetail({ steps, tags, trust, color }) {
+// Sponsoring — a split "matchmaking" panel: organizer steps on one side,
+// the brand-facing tinted side on the other, with a photo bridge.
+function SplitDetail({ univ, steps, tags, trust, color }) {
   return (
-    <div className="rounded-[28px] bg-white/[0.06] border border-white/10 backdrop-blur-sm overflow-hidden">
-      <div className="grid grid-cols-1 lg:grid-cols-2">
-        <div className="p-6 sm:p-8 lg:border-r border-white/10 border-b lg:border-b-0">
+    <div className="rounded-3xl bg-white border border-ink-200 shadow-[0_18px_50px_-20px_rgba(11,19,36,0.3)] overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-5">
+        <div className="lg:col-span-2 p-4 sm:p-6 lg:border-r border-ink-200 border-b lg:border-b-0">
           <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
           <StepsWidget steps={steps} color={color} layout="column" />
         </div>
-        <div className="p-6 sm:p-8 flex flex-col gap-6 sm:gap-8" style={{ background: `${color}0d` }}>
+        <Thumb src={univ.nested.how.image} className="hidden lg:block rounded-none" />
+        <div className="lg:col-span-2 p-4 sm:p-6 flex flex-col gap-4" style={{ background: `${color}0a` }}>
           <div>
             <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
             <TagsWidget tags={tags} />
           </div>
-          <div className="rounded-2xl p-5 border" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+          <div className="rounded-xl p-3.5 border bg-white/70" style={{ borderColor: `${color}35` }}>
             <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
-            <p className="text-white/90 text-sm leading-relaxed normal-case">{trust.text}</p>
+            <p className="text-ink-700 text-xs leading-snug normal-case">{trust.text}</p>
           </div>
         </div>
       </div>
@@ -890,40 +820,42 @@ function SplitDetail({ steps, tags, trust, color }) {
   );
 }
 
-// Jeux-Concours & Tombolas — a scattered grid of raffle-ticket cards
-// (dashed borders, slight alternating tilt) instead of a tidy list.
-function RaffleDetail({ steps, tags, trust, color }) {
+// Tombolas — scattered raffle-ticket cards with a light tilt.
+function RaffleDetail({ univ, steps, tags, trust, color }) {
   return (
-    <div className="flex flex-col gap-8 sm:gap-10">
+    <div className="flex flex-col gap-4 sm:gap-5">
       <div>
-        <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
-        <div className="flex flex-wrap gap-5 sm:gap-6 justify-center">
+        <div className="flex justify-center mb-3">
+          <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
+        </div>
+        <div className="flex flex-wrap gap-4 justify-center">
           {steps.map((step, idx) => (
             <div
               key={idx}
-              className="relative w-full sm:w-56 rounded-2xl bg-white/[0.06] border-2 border-dashed p-4 sm:p-5"
-              style={{ borderColor: `${color}55`, transform: `rotate(${(idx % 2 === 0 ? -1 : 1) * (2 + idx)}deg)` }}
+              className="relative w-full sm:w-52 rounded-xl bg-white border-2 border-dashed p-3.5 shadow-sm"
+              style={{ borderColor: `${color}50`, transform: `rotate(${(idx % 2 === 0 ? -1 : 1) * (1.5 + idx)}deg)` }}
             >
               <span
-                className="absolute -top-3 -left-3 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-ink-900"
+                className="absolute -top-2.5 -left-2.5 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
                 style={{ backgroundColor: color }}
               >
                 {idx + 1}
               </span>
-              <p className="text-white/85 text-sm leading-snug normal-case">{step}</p>
+              <p className="text-ink-700 text-xs leading-snug normal-case">{step}</p>
             </div>
           ))}
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-        <div className="rounded-3xl p-5 sm:p-7 border-2" style={{ background: `${color}14`, borderColor: color }}>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="rounded-2xl p-4 border-2 sm:col-span-1" style={{ background: `${color}0d`, borderColor: color }}>
           <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
-          <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
+          <p className="text-ink-700 text-xs leading-snug normal-case">{trust.text}</p>
         </div>
         <Panel>
           <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
           <TagsWidget tags={tags} />
         </Panel>
+        <Thumb src={univ.nested.who.image} className="hidden sm:block min-h-[8rem]" />
       </div>
     </div>
   );

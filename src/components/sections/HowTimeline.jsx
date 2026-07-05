@@ -53,9 +53,9 @@ function HowTimeline() {
   const lineHeight = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);
 
   return (
-    <section ref={rootRef} className="relative bg-white py-20 sm:py-28 overflow-hidden">
+    <section ref={rootRef} className="relative bg-gradient-to-b from-white via-ink-100/40 to-white py-16 sm:py-28 overflow-hidden">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16 sm:mb-24">
+        <div className="text-center mb-12 sm:mb-24">
           <p className="text-primary font-semibold tracking-[0.2em] uppercase text-[10px] mb-2">
             Comment ça marche
           </p>
@@ -68,20 +68,20 @@ function HowTimeline() {
           <div className="absolute top-0 bottom-0 w-1 rounded-full bg-ink-200 left-4 sm:left-1/2 sm:-translate-x-1/2" />
           <motion.div
             style={{ height: lineHeight }}
-            className="absolute top-0 w-1 rounded-full bg-gradient-to-b from-primary to-[#FFB347] left-4 sm:left-1/2 sm:-translate-x-1/2"
+            className="absolute top-0 w-1 rounded-full bg-gradient-to-b from-primary to-primary-300 left-4 sm:left-1/2 sm:-translate-x-1/2"
           />
 
-          <ul className="space-y-16 sm:space-y-28">
+          <ul className="space-y-10 sm:space-y-28">
             {STEPS.map((s, i) => (
               <Step key={s.n} step={s} index={i} />
             ))}
           </ul>
         </div>
 
-        <div className="mt-16 sm:mt-20 text-center">
+        <div className="mt-12 sm:mt-20 text-center">
           <a
             href="/inscription"
-            className="inline-flex items-center gap-2 bg-primary text-white font-semibold rounded-full px-8 py-3.5 shadow-[0_16px_36px_-8px_rgba(255,106,0,0.55)]"
+            className="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-primary-300 text-white font-semibold rounded-full px-8 py-3.5 shadow-[0_16px_36px_-8px_rgba(255,106,0,0.55)]"
           >
             Créer mon premier événement
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -123,13 +123,13 @@ function Step({ step, index }) {
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true, margin: '-12% 0px' }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-          className={`relative rounded-3xl overflow-hidden border border-ink-200 shadow-xl ${
-            index % 3 === 0 ? 'aspect-[4/3]' : index % 3 === 1 ? 'aspect-square' : 'aspect-[5/4]'
+          className={`relative rounded-2xl sm:rounded-3xl overflow-hidden border border-ink-200 shadow-lg sm:shadow-xl aspect-video max-h-48 sm:max-h-none w-full ${
+            index % 3 === 0 ? 'sm:aspect-[4/3]' : index % 3 === 1 ? 'sm:aspect-square' : 'sm:aspect-[5/4]'
           }`}
         >
           <img src={step.image} alt={step.title} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-ink-900/50 to-transparent" />
-          <span className="absolute top-4 left-4 font-heading text-white text-6xl sm:text-7xl drop-shadow-lg leading-none">
+          <span className="absolute top-3 left-3 sm:top-4 sm:left-4 font-heading text-white text-4xl sm:text-7xl drop-shadow-lg leading-none">
             {step.n}
           </span>
         </motion.figure>
@@ -140,11 +140,11 @@ function Step({ step, index }) {
           viewport={{ once: true, margin: '-15% 0px' }}
           transition={{ duration: 0.6, delay: 0.15 }}
         >
-          <span className="text-primary text-xs tracking-[0.25em] uppercase font-semibold mb-3 inline-block">
+          <span className="text-primary text-[10px] sm:text-xs tracking-[0.25em] uppercase font-semibold mb-2 sm:mb-3 inline-block">
             Étape {step.n}
           </span>
-          <h3 className="text-2xl sm:text-4xl text-ink-900 mb-3 normal-case">{step.title}</h3>
-          <p className="text-ink-700 text-base sm:text-lg normal-case max-w-md">{step.text}</p>
+          <h3 className="text-xl sm:text-4xl text-ink-900 mb-2 sm:mb-3 normal-case">{step.title}</h3>
+          <p className="text-ink-700 text-sm sm:text-lg normal-case max-w-md">{step.text}</p>
         </motion.div>
       </div>
     </li>

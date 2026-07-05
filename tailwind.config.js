@@ -3,23 +3,28 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
+      // Exact palette from the brand charter ("COULEURS" sheet):
+      //   gamme orange  #FF8533 #FF6A00 #FFB847 #FFA472 #FFD599
+      //   gamme bleue   #163B7A #2B6BFF #5F8EFF #8CB7FF #D0E8FF
+      //   neutres       #0B1324 #475569 #E2E8F0 #F5F6F8 #FFFFFF
       colors: {
         primary: {
           DEFAULT: '#FF6A00',
           50: '#FFF3EA',
           100: '#FFD599',
           200: '#FFA472',
-          300: '#FF8347',
-          400: '#FF6A00',
-          500: '#E85F00',
+          300: '#FFB847',
+          400: '#FF8533',
+          500: '#FF6A00',
+          600: '#E85F00',
         },
         secondary: {
           DEFAULT: '#2B6BFF',
-          50: '#DDE6FF',
-          100: '#8C7FFF',
-          200: '#5F8FFF',
+          50: '#D0E8FF',
+          100: '#8CB7FF',
+          200: '#5F8EFF',
           300: '#2B6BFF',
-          400: '#18397A',
+          400: '#163B7A',
         },
         ink: {
           900: '#0B1324',
