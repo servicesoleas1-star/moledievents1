@@ -82,19 +82,20 @@ function FeeCalculator() {
           <label className="block text-xs font-semibold uppercase tracking-wide text-ink-700 mb-2">
             Type d'événement
           </label>
-          <div className="flex flex-wrap gap-2 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-6">
             {campaignTypes.map((t) => (
               <button
                 key={t.key}
                 type="button"
                 onClick={() => setCampaignType(t.key)}
-                className={`px-4 py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border py-3 px-2 text-center transition-colors ${
                   campaignType === t.key
                     ? 'bg-ink-900 text-white border-ink-900'
                     : 'bg-white text-ink-700 border-ink-200 hover:border-ink-900/40'
                 }`}
               >
-                {t.label}
+                <i className={`fa-solid ${t.icon} text-base ${campaignType === t.key ? 'text-primary-300' : 'text-primary'}`} />
+                <span className="text-[11px] font-semibold leading-tight">{t.label}</span>
               </button>
             ))}
           </div>

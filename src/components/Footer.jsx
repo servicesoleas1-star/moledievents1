@@ -66,25 +66,21 @@ const socials = [
 function Footer() {
   return (
     <footer className="relative bg-ink-100 text-ink-700 overflow-hidden">
-      {/* Compact CTA banner — reads as one sentence: text, button, "avec [logo] Moledi Events" */}
+      {/* Compact CTA banner — logo, then "De l'idée à l'événement, Un seul clic" — always one horizontal row */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-15% 0px' }}
         transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-        className="relative w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 border-b border-ink-200 flex flex-row flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-3"
+        className="relative w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 border-b border-ink-200 flex flex-row items-center justify-center sm:justify-start gap-2 sm:gap-3"
       >
-        <p className="text-ink-900 text-xs sm:text-base font-semibold whitespace-nowrap">
+        <img src={media.logo} alt="Moledi Event" className="h-6 sm:h-8 w-auto shrink-0" />
+        <p className="text-ink-900 text-xs sm:text-base font-semibold whitespace-nowrap truncate">
           De l'idée à l'événement,
         </p>
         <a href="/inscription" className="btn btn-primary shrink-0 !px-4 sm:!px-6 !text-xs sm:!text-sm whitespace-nowrap">
           Un seul clic
         </a>
-        <p className="flex items-center gap-1.5 text-ink-900 text-xs sm:text-base font-semibold whitespace-nowrap">
-          avec
-          <img src={media.logoMark} alt="" className="h-4 sm:h-5 w-auto" />
-          Moledi Events
-        </p>
       </motion.div>
 
       <div className="relative w-full px-4 sm:px-6 lg:px-8 py-10">
