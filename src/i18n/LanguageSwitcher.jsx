@@ -18,30 +18,34 @@ function LanguageSwitcher({ variant = 'light' }) {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const btnClass =
-    variant === 'dark'
-      ? 'text-white/90 hover:bg-white/10'
-      : 'text-ink-900 hover:bg-ink-100';
+  const ringClass = variant === 'dark' ? 'border-white/40' : 'border-ink-200';
 
   return (
     <div className="relative" ref={ref} data-no-translate>
+      {/* A round badge: the flag fills the whole circle as its background,
+          the language code sits on top in white with a text-shadow so it
+          stays legible over any flag. */}
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="Choisir la langue"
-        className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors ${btnClass}`}
+        className={`relative w-9 h-9 rounded-full overflow-hidden border ${ringClass} shrink-0`}
       >
         <img
           src={FLAG[lang]}
-          alt={LANGUAGES[lang].label}
-          width="22"
-          height="16"
-          className="rounded-sm shadow-sm"
+          alt=""
+          aria-hidden
+          className="absolute inset-0 w-full h-full object-cover opacity-85"
         />
-        <span className="text-sm font-semibold uppercase tracking-wide">
+        <span
+          className="relative z-10 flex items-center justify-center w-full h-full text-[10px] font-extrabold uppercase tracking-wide text-white"
+          style={{ textShadow: '0 1px 3px rgba(0,0,0,.75)' }}
+        >
           {lang}
         </span>
         {translating && (
-          <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+            <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          </span>
         )}
       </button>
 

@@ -2,7 +2,6 @@ import { LanguageProvider } from './i18n/LanguageContext';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import ZUIHubStory from './components/sections/ZUIHubStory';
-import PortalTransition from './components/sections/PortalTransition';
 import FeaturedMarquee from './components/sections/FeaturedMarquee';
 import HowTimeline from './components/sections/HowTimeline';
 import Coverage from './components/sections/Coverage';
@@ -13,12 +12,11 @@ import CookieBanner from './components/CookieBanner';
 function App() {
   return (
     <LanguageProvider>
-      <div className="min-h-screen bg-ink-50">
+      <div className="min-h-screen bg-white">
         <Navbar />
         <main>
           <Hero />
           <ZUIHubStory />
-          <PortalTransition />
           <FeaturedMarquee />
           <HowTimeline />
           <Coverage />
