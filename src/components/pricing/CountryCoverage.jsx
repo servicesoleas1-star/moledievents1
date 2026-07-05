@@ -65,7 +65,7 @@ function CountryCoverage() {
         <motion.div
           className="flex items-center py-2"
           animate={{ x: ['0%', '-50%'] }}
-          transition={{ duration: 60, repeat: Infinity, ease: 'linear' }}
+          transition={{ duration: 26, repeat: Infinity, ease: 'linear' }}
         >
           {track.map((c, i) => (
             <CountryPill key={`${c.code}-${i}`} code={c.code} name={c.name} active={!noneConfigured && activeCodes.has(c.code)} />

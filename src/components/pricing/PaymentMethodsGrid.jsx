@@ -49,12 +49,31 @@ function MethodCard({ m }) {
   );
 }
 
+function MethodMarquee({ items, duration }) {
+  const track = [...items, ...items];
+  return (
+    <div className="relative overflow-hidden mb-8 last:mb-0">
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-12 sm:w-24 bg-gradient-to-r from-ink-100/50 to-transparent z-10" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-12 sm:w-24 bg-gradient-to-l from-ink-100/50 to-transparent z-10" />
+      <motion.div
+        className="flex gap-3"
+        animate={{ x: ['0%', '-50%'] }}
+        transition={{ duration, repeat: Infinity, ease: 'linear' }}
+      >
+        {track.map((m, i) => (
+          <MethodCard key={`${m.operator}-${i}`} m={m} />
+        ))}
+      </motion.div>
+    </div>
+  );
+}
+
 /**
  * Payment operators — every row comes from `/api/payment-methods` (the
  * Aggregator table, admin-configured). Empty table = empty section, no
  * fallback list. Real brand logos are loaded in the background and shown
- * once available; initials only render if a logo fails to load. Horizontal
- * scroll with a light entrance animation keeps the strip compact.
+ * once available; initials only render if a logo fails to load. Both rows
+ * are continuously auto-scrolling marquees, same as the country strip.
  */
 function PaymentMethodsGrid() {
   const { methods } = usePaymentMethods();
@@ -84,40 +103,14 @@ function PaymentMethodsGrid() {
           </p>
         )}
 
-        {live.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true, margin: '-10% 0px' }}
-            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory scrollbar-hide mb-8"
-          >
-            {live.map((m) => (
-              <div key={m.operator} className="snap-start">
-                <MethodCard m={m} />
-              </div>
-            ))}
-          </motion.div>
-        )}
+        {live.length > 0 && <MethodMarquee items={live} duration={22} />}
 
         {upcoming.length > 0 && (
           <>
             <p className="text-center text-xs font-semibold uppercase tracking-wide text-ink-700 mb-4">
               Prochainement
             </p>
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: '-10% 0px' }}
-              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-              className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory scrollbar-hide"
-            >
-              {upcoming.map((m) => (
-                <div key={m.operator} className="snap-start">
-                  <MethodCard m={m} />
-                </div>
-              ))}
-            </motion.div>
+            <MethodMarquee items={upcoming} duration={26} />
           </>
         )}
       </div>
