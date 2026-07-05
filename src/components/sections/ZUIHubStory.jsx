@@ -1,10 +1,16 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { universes } from '../../data/universes';
 import { media } from '../../config/media';
 
 gsap.registerPlugin(ScrollTrigger);
+
+// Once the visitor has ridden the story all the way to the final overview,
+// it is remembered for the rest of the tab session — scrolling back up into
+// the section afterwards shows the resting final frame instead of replaying
+// the whole flight. A hard refresh is the only way to see it again.
+const DONE_KEY = 'moledi_zui_done';
 
 const BLOCK_W = 460;
 const BLOCK_H = 600;
@@ -27,7 +33,7 @@ const positions = positionsFor(universes.length);
 // deliberate dwell at zoom-1 in the middle of a flight: the camera parks on
 // the block for a beat — long enough to read its title/description — before
 // diving on into zoom-2.
-const T = { in: 1.0, hold: 0.45, deepen: 0.7, surface: 0.6, out: 0.8 };
+const T = { in: 1.3, hold: 0.5, deepen: 0.95, surface: 0.7, out: 0.85 };
 
 // Real seconds for each kind of scroll-triggered clip. One scroll = one
 // full clip, and the only resting stops are the zoom-2 screens (plus the
@@ -37,20 +43,32 @@ const T = { in: 1.0, hold: 0.45, deepen: 0.7, surface: 0.6, out: 0.8 };
 //   - `out`     : last zoom-2 → back out to the final overview
 // Long on purpose — the clip's own duration is what paces the story and
 // gives the reader time; the scroll is only the "play" signal.
-const STEP_DURATION = { inDeep: 5.2, next: 7.0, out: 2.9, jump: 2.5 };
+const STEP_DURATION = { inDeep: 6.4, next: 8.4, out: 3.4, jump: 2.8 };
 const STEP_EASE = 'power2.inOut';
 
+// A fast/insistent scroll fast-forwards through the remaining clips instead
+// of queueing them at full length — this is what lets a quick flick sail
+// straight through to the next universe's zoom-2 (or out to the section
+// that follows) instead of forcing the reader to sit through every step.
+const TURBO_DIVISOR = 5;
+const TURBO_MIN_DURATION = 0.5;
+// Hard cap on how many clips can be banked ahead of the one currently
+// playing — keeps a single pathological scroll delta from queueing an
+// unbounded chain of turbo steps.
+const MAX_PENDING_STEPS = 6;
+
 // One distinct "camera personality" per universe (6, so nothing repeats
-// across a full pass) so the zooms/dézooms never feel monotone. Only the
-// ease curve varies — the camera move alone (position + scale) is the
-// entire effect.
+// across a full pass) so the zooms/dézooms never feel monotone. The core
+// camera move (position + scale) always uses the same smooth curve — only
+// the decorative ring accent varies — so the flight itself never has the
+// jarring speed-up a per-step ease swap used to cause between steps 1 and 2.
 const FLIGHT_STYLES = [
-  { inEase: 'power2.out', deepenEase: 'power2.in', ringEase: 'back.out(1.4)' },
-  { inEase: 'power1.inOut', deepenEase: 'power1.inOut', ringEase: 'elastic.out(1,0.65)' },
-  { inEase: 'back.out(1.05)', deepenEase: 'power3.in', ringEase: 'back.out(2)' },
-  { inEase: 'sine.inOut', deepenEase: 'sine.in', ringEase: 'power1.out' },
-  { inEase: 'power4.out', deepenEase: 'power4.in', ringEase: 'back.out(1.8)' },
-  { inEase: 'circ.out', deepenEase: 'circ.in', ringEase: 'elastic.out(1,0.5)' },
+  { inEase: 'power2.inOut', deepenEase: 'power2.inOut', ringEase: 'back.out(1.4)' },
+  { inEase: 'power2.inOut', deepenEase: 'power2.inOut', ringEase: 'elastic.out(1,0.65)' },
+  { inEase: 'power2.inOut', deepenEase: 'power2.inOut', ringEase: 'back.out(2)' },
+  { inEase: 'power2.inOut', deepenEase: 'power2.inOut', ringEase: 'power1.out' },
+  { inEase: 'power2.inOut', deepenEase: 'power2.inOut', ringEase: 'back.out(1.8)' },
+  { inEase: 'power2.inOut', deepenEase: 'power2.inOut', ringEase: 'elastic.out(1,0.5)' },
 ];
 
 function ZUIHubStory() {
@@ -69,11 +87,25 @@ function ZUIHubStory() {
   const stopsRef = useRef([]);
   const currentStepRef = useRef(0);
   const isAnimatingRef = useRef(false);
-  const pendingDirRef = useRef(0);
+  // Signed count of extra steps banked while a clip is already playing — a
+  // long/fast scroll keeps adding to this instead of only remembering the
+  // last direction, which is what lets a single insistent flick chain
+  // through several steps in a row (each one shorter than the last).
+  const pendingStepsRef = useRef(0);
   const accumRef = useRef(0);
-  const lastGestureTimeRef = useRef(0);
-  const firedThisGestureRef = useRef(false);
   const lastScrollRef = useRef(0);
+
+  // Story already finished once this tab session — render the resting
+  // final frame statically, no pin, no replay (only a hard refresh resets
+  // sessionStorage and brings the animated version back).
+  const [alreadyDone] = useState(() => {
+    try {
+      return sessionStorage.getItem(DONE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [finished, setFinished] = useState(alreadyDone);
 
   useLayoutEffect(() => {
     const ctx = gsap.context(() => {
@@ -105,6 +137,11 @@ function ZUIHubStory() {
       gsap.set(flashRefs.current, { opacity: 0 });
       gsap.set(blockRefs.current, { opacity: 1, filter: 'blur(0px)' });
       gsap.set(logoRef.current, { opacity: 1, filter: 'blur(0px)' });
+
+      // Already rode the full story this session — leave the canvas parked
+      // on the resting overview frame and skip building the scroll-jacking
+      // timeline altogether (no pin is created in the effect below either).
+      if (alreadyDone) return;
 
       // This timeline is never scrubbed by raw scroll position. It's a fixed
       // score of camera moves, paused, that we play with tl.tweenTo() one
@@ -196,30 +233,58 @@ function ZUIHubStory() {
       stopsRef.current = stops;
     }, rootRef);
     return () => ctx.revert();
-  }, []);
+  }, [alreadyDone]);
 
   // -- Step engine: one scroll = one full clip to the next zoom-2 ----------
 
-  const durationFor = (fromIdx, toIdx) => {
-    if (Math.abs(toIdx - fromIdx) > 1) return STEP_DURATION.jump;
-    const stops = stopsRef.current;
-    const a = stops[Math.min(fromIdx, toIdx)] || '';
-    const b = stops[Math.max(fromIdx, toIdx)] || '';
-    if (a.startsWith('overview')) return STEP_DURATION.inDeep; // first overview <-> first zoom-2
-    if (b.startsWith('overview')) return STEP_DURATION.out; // last zoom-2 <-> final overview
-    return STEP_DURATION.next; // zoom-2 <-> next universe's zoom-2 (full dézoom + re-zoom clip)
+  const durationFor = (fromIdx, toIdx, turbo) => {
+    let dur;
+    if (Math.abs(toIdx - fromIdx) > 1) {
+      dur = STEP_DURATION.jump;
+    } else {
+      const stops = stopsRef.current;
+      const a = stops[Math.min(fromIdx, toIdx)] || '';
+      const b = stops[Math.max(fromIdx, toIdx)] || '';
+      if (a.startsWith('overview')) dur = STEP_DURATION.inDeep; // first overview <-> first zoom-2
+      else if (b.startsWith('overview')) dur = STEP_DURATION.out; // last zoom-2 <-> final overview
+      else dur = STEP_DURATION.next; // zoom-2 <-> next universe's zoom-2
+    }
+    // Turbo: a fast/insistent scroll plays the chained clip at a fraction of
+    // its normal length instead of its full duration — the "x5" fast-forward.
+    return turbo ? Math.max(TURBO_MIN_DURATION, dur / TURBO_DIVISOR) : dur;
+  };
+
+  const markDoneIfFinished = (clamped, stopsLength) => {
+    if (clamped !== stopsLength - 1) return;
+    try {
+      sessionStorage.setItem(DONE_KEY, '1');
+    } catch {
+      /* private browsing / storage disabled — harmless to skip */
+    }
+    setFinished(true);
   };
 
   // A scroll intent that arrives while a transition is still playing isn't
-  // dropped — it's banked in pendingDirRef and fired the instant the current
-  // clip finishes, like a queued video.
-  const goToStep = (rawIndex) => {
+  // dropped — it's banked in pendingStepsRef and fired the instant the
+  // current clip finishes, like a queued video. A long/fast scroll keeps
+  // adding to that bank (see the ScrollTrigger handler below), so the
+  // chained clips that follow all play in turbo until the queue drains —
+  // that's what lets one insistent flick sail through several universes.
+  const goToStep = (rawIndex, turbo = false) => {
     const stops = stopsRef.current;
     const tl = tlRef.current;
     if (!tl || !stops.length) return;
     const clamped = Math.max(0, Math.min(stops.length - 1, rawIndex));
-    if (clamped === currentStepRef.current || isAnimatingRef.current) return;
-    const duration = durationFor(currentStepRef.current, clamped);
+    // Nothing to do (already there, or a chained call overshot the bounds)
+    // — clear any leftover bank so it can't silently re-fire the same step
+    // over and over, which is what used to look like the story getting
+    // "stuck" repeating one block.
+    if (clamped === currentStepRef.current) {
+      pendingStepsRef.current = 0;
+      return;
+    }
+    if (isAnimatingRef.current) return;
+    const duration = durationFor(currentStepRef.current, clamped, turbo);
     isAnimatingRef.current = true;
     currentStepRef.current = clamped;
     tl.tweenTo(stops[clamped], {
@@ -237,11 +302,42 @@ function ZUIHubStory() {
           else if (clamped === stops.length - 1) st.scroll(st.end);
           lastScrollRef.current = st.scroll();
         }
-        const dir = pendingDirRef.current;
-        if (dir) {
-          pendingDirRef.current = 0;
-          goToStep(currentStepRef.current + dir);
+        markDoneIfFinished(clamped, stops.length);
+        const pending = pendingStepsRef.current;
+        if (pending) {
+          const dir = pending > 0 ? 1 : -1;
+          pendingStepsRef.current = pending - dir;
+          goToStep(currentStepRef.current + dir, true);
         }
+      },
+    });
+  };
+
+  // "Passer" — jump straight to the resting final frame, skipping whatever
+  // is left of the story, and mark it done so it never replays this session.
+  const skipToEnd = () => {
+    const stops = stopsRef.current;
+    const tl = tlRef.current;
+    if (!tl || !stops.length) return;
+    pendingStepsRef.current = 0;
+    const last = stops.length - 1;
+    if (currentStepRef.current === last) {
+      markDoneIfFinished(last, stops.length);
+      return;
+    }
+    isAnimatingRef.current = true;
+    currentStepRef.current = last;
+    tl.tweenTo(stops[last], {
+      duration: 1.1,
+      ease: 'power2.inOut',
+      onComplete: () => {
+        isAnimatingRef.current = false;
+        const st = stRef.current;
+        if (st) {
+          st.scroll(st.end);
+          lastScrollRef.current = st.scroll();
+        }
+        markDoneIfFinished(last, stops.length);
       },
     });
   };
@@ -251,21 +347,23 @@ function ZUIHubStory() {
   // We never scrub the camera 1:1 with scroll position: a tiny scroll is
   // just the "play" signal, and the clip's own duration paces the story.
   useEffect(() => {
+    if (alreadyDone) return;
     ScrollTrigger.normalizeScroll(true);
 
-    // Two thresholds: a tiny nudge fires the next clip when the story is at
-    // rest, but banking a step WHILE a clip is playing demands a much more
-    // deliberate scroll — normalizeScroll's momentum tail keeps trickling
-    // small deltas (sometimes with pauses long enough to look like a new
-    // gesture) for a while after a flick, and with a single low threshold
-    // that tail could re-fire and queue a second, unwanted step.
+    // A tiny nudge fires the next clip when the story is at rest. While a
+    // clip is already playing, a larger accumulated scroll is needed to
+    // bank another one — a big single delta (fast flick) can clear that
+    // threshold several times over in one tick, and each time it does we
+    // bank one more turbo step, which is what produces the fast-forward.
     const FIRE_THRESHOLD = 18;
-    const BANK_THRESHOLD = 90;
-    const GESTURE_TIMEOUT = 600;
+    const BANK_THRESHOLD = 70;
 
     const st = ScrollTrigger.create({
       trigger: rootRef.current,
-      start: 'top top',
+      // The story only starts capturing scroll once the section is centred
+      // in the viewport — not the instant it's merely entered — so arriving
+      // at it never feels like an ambush mid-scroll.
+      start: 'center center',
       // Generous fixed scroll budget so a fast scroll session can't
       // physically outrun the step-by-step processing (goToStep force-
       // releases the instant the story is actually finished).
@@ -286,33 +384,37 @@ function ZUIHubStory() {
         const atEnd = currentStepRef.current === stops.length - 1;
         // Let native scroll take over at the story's two ends.
         if (atStart && delta < 0) return;
-        if (atEnd && delta > 0) return;
+        if (atEnd && delta > 0) {
+          pendingStepsRef.current = 0;
+          return;
+        }
 
-        // One physical gesture = exactly one step. Scroll deltas that keep
-        // arriving within GESTURE_TIMEOUT of each other are the SAME
-        // gesture (including the momentum tail normalizeScroll produces
-        // after a flick) — once that gesture has fired its step, every
-        // further delta it emits is ignored. Only a real pause in the
-        // stream starts a new gesture that can fire the next step.
-        const now = performance.now();
-        const isNewGesture = now - lastGestureTimeRef.current > GESTURE_TIMEOUT;
-        if (isNewGesture) {
-          accumRef.current = 0;
-          firedThisGestureRef.current = false;
-        } else if (Math.sign(accumRef.current) === -Math.sign(delta)) {
+        // A gesture that reverses direction cancels whatever was banked the
+        // other way instead of letting it fire on top of the new intent —
+        // this (plus the same-step guard in goToStep) is what used to let
+        // the story appear stuck replaying a single block back and forth.
+        if (Math.sign(accumRef.current) === -Math.sign(delta)) {
           accumRef.current = 0;
         }
-        lastGestureTimeRef.current = now;
-        if (firedThisGestureRef.current) return;
+        if (pendingStepsRef.current && Math.sign(pendingStepsRef.current) !== Math.sign(delta)) {
+          pendingStepsRef.current = 0;
+        }
         accumRef.current += delta;
 
         const threshold = isAnimatingRef.current ? BANK_THRESHOLD : FIRE_THRESHOLD;
-        if (Math.abs(accumRef.current) >= threshold) {
+        // A single long/fast scroll can cross the threshold several times
+        // over — fire/bank that many steps instead of just one, so holding
+        // a fast scroll genuinely keeps advancing rather than firing once
+        // and then waiting for a brand new gesture (which, on a long touch
+        // swipe, could otherwise look like the story had frozen). Banked
+        // steps are capped — a single pathological delta (e.g. a
+        // programmatic jump) shouldn't queue dozens of turbo clips in a row.
+        while (Math.abs(accumRef.current) >= threshold) {
           const dir = accumRef.current > 0 ? 1 : -1;
-          accumRef.current = 0;
-          firedThisGestureRef.current = true;
+          accumRef.current -= dir * threshold;
           if (isAnimatingRef.current) {
-            pendingDirRef.current = dir;
+            if (Math.abs(pendingStepsRef.current) >= MAX_PENDING_STEPS) break;
+            pendingStepsRef.current += dir;
           } else {
             goToStep(currentStepRef.current + dir);
           }
@@ -322,37 +424,16 @@ function ZUIHubStory() {
     stRef.current = st;
 
     return () => st.kill();
-  }, []);
+  }, [alreadyDone]);
 
   return (
     // ScrollTrigger's `pin: true` wraps this in its own spacer and pins it
     // at top:0 for the whole scroll budget above.
     <section
       ref={rootRef}
-      className="relative bg-ink-100 h-[100svh] overflow-hidden"
+      className="relative h-[100svh] overflow-hidden"
       aria-label="Les 6 univers de Moledi Event"
     >
-      {/* Light curved backdrop straight from the charter: soft white base,
-          organic orange/blue blobs, two sweeping curves. No hard divider
-          with the neighbouring sections — the same light family of tones
-          continues above and below. */}
-      <div className="absolute inset-0 bg-gradient-to-b from-white via-ink-100 to-white" />
-      <div
-        className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] bg-primary/10 blur-[120px] animate-[drift1_26s_ease-in-out_infinite]"
-        style={{ borderRadius: '42% 58% 65% 35% / 45% 40% 60% 55%', willChange: 'opacity, transform', transform: 'translateZ(0)' }}
-      />
-      <div
-        className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] bg-secondary/10 blur-[120px] animate-[drift2_32s_ease-in-out_infinite]"
-        style={{ borderRadius: '60% 40% 30% 70% / 55% 65% 35% 45%', transform: 'translateZ(0)' }}
-      />
-      <svg
-        className="pointer-events-none absolute inset-0 w-full h-full opacity-[0.12]"
-        viewBox="0 0 1000 1000"
-        preserveAspectRatio="none"
-      >
-        <path d="M -100 250 C 250 50, 650 550, 1100 300" stroke="#FF6A00" strokeWidth="2" fill="none" />
-        <path d="M -100 800 C 300 950, 700 500, 1100 750" stroke="#2B6BFF" strokeWidth="2" fill="none" />
-      </svg>
 
       <div className="absolute inset-0 flex items-center justify-center">
         <div ref={canvasRef} data-testid="zui-canvas" className="absolute left-1/2 top-1/2" style={{ willChange: 'transform' }}>
@@ -389,6 +470,19 @@ function ZUIHubStory() {
           overlayRef={(el) => (overlayRefs.current[i] = el)}
         />
       ))}
+
+      {/* Sober "skip" — jumps straight to the resting final frame. Sits at
+          the bottom of this (100svh) section, which is exactly the bottom
+          of the screen once the story is actively pinned. */}
+      {!finished && (
+        <button
+          type="button"
+          onClick={skipToEnd}
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 text-xs font-semibold text-ink-700 bg-white/80 backdrop-blur-sm border border-ink-200 rounded-lg px-4 py-2 hover:text-ink-900 hover:border-ink-300 transition-colors"
+        >
+          Passer
+        </button>
+      )}
     </section>
   );
 }
@@ -702,58 +796,21 @@ function TicketDetail({ univ, steps, tags, trust, color }) {
 // beside the who/imagery column: reads like a fundraising meter.
 function RadialDetail({ univ, steps, tags, trust, color }) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 items-center">
-      <div className="relative w-full max-w-[24rem] aspect-square mx-auto hidden sm:flex items-center justify-center">
-        <svg viewBox="0 0 200 200" className="absolute inset-0 w-full h-full">
-          <circle cx="100" cy="100" r="88" fill="none" stroke={`${color}30`} strokeWidth="2" />
-          <circle cx="100" cy="100" r="88" fill="none" stroke={color} strokeWidth="3" strokeDasharray="180 400" strokeLinecap="round" />
-        </svg>
-        <div
-          className="relative z-10 w-[56%] aspect-square rounded-full flex flex-col items-center justify-center text-center px-5 bg-white shadow-lg"
-          style={{ border: `1.5px solid ${color}40` }}
-        >
-          {IconShield({ color })}
-          <p className="mt-1.5 text-ink-700 text-[10px] leading-snug normal-case">{trust.text}</p>
-        </div>
-        {steps.map((step, idx) => {
-          const angle = (360 / steps.length) * idx - 90;
-          const rad = (angle * Math.PI) / 180;
-          const x = 50 + 46 * Math.cos(rad);
-          const y = 50 + 46 * Math.sin(rad);
-          return (
-            <div
-              key={idx}
-              className="absolute w-[36%] rounded-xl p-2.5 text-center bg-white border border-ink-200 shadow-md"
-              style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}
-            >
-              <span
-                className="inline-flex w-5 h-5 rounded-full items-center justify-center text-[10px] font-bold text-white mb-1"
-                style={{ backgroundColor: color }}
-              >
-                {idx + 1}
-              </span>
-              <p className="text-ink-700 text-[10px] leading-snug normal-case">{step}</p>
-            </div>
-          );
-        })}
-      </div>
-      {/* Mobile: same content as a simple stacked read */}
-      <div className="sm:hidden flex flex-col gap-3">
-        <div className="rounded-2xl p-4 border text-center bg-white" style={{ borderColor: `${color}35` }}>
-          {IconShield({ color })}
-          <p className="mt-1.5 text-ink-700 text-xs leading-snug normal-case">{trust.text}</p>
-        </div>
-        <Panel>
-          <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
-          <StepsWidget steps={steps} color={color} layout="column" />
-        </Panel>
-      </div>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 items-stretch">
+      <Panel>
+        <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
+        <StepsWidget steps={steps} color={color} layout="row" />
+      </Panel>
       <div className="flex flex-col gap-3 sm:gap-4">
-        <Thumb src={univ.nested.who.image} className="hidden lg:block h-32" />
+        <Thumb src={univ.nested.who.image} className="hidden lg:block h-28" />
         <Panel>
           <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
           <TagsWidget tags={tags} />
         </Panel>
+        <div className="rounded-2xl p-4 sm:p-5 border" style={{ background: `${color}0d`, borderColor: `${color}35` }}>
+          <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
+          <p className="text-ink-700 text-xs sm:text-sm leading-snug normal-case">{trust.text}</p>
+        </div>
       </div>
     </div>
   );

@@ -5,7 +5,6 @@ import ZUIHubStory from './components/sections/ZUIHubStory';
 import PortalTransition from './components/sections/PortalTransition';
 import FeaturedMarquee from './components/sections/FeaturedMarquee';
 import HowTimeline from './components/sections/HowTimeline';
-import Testimonials from './components/sections/Testimonials';
 import Coverage from './components/sections/Coverage';
 import PricingTeaser from './components/sections/PricingTeaser';
 import Footer from './components/Footer';
@@ -14,7 +13,7 @@ import CookieBanner from './components/CookieBanner';
 function App() {
   return (
     <LanguageProvider>
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-ink-50">
         <Navbar />
         <main>
           <Hero />
@@ -22,7 +21,6 @@ function App() {
           <PortalTransition />
           <FeaturedMarquee />
           <HowTimeline />
-          <Testimonials />
           <Coverage />
           <PricingTeaser />
         </main>

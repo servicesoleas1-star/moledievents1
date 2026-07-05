@@ -40,17 +40,7 @@ function PortalTransition() {
   const done = line2.length === LINE_2.length;
 
   return (
-    <section ref={ref} className="relative bg-gradient-to-b from-white via-ink-100/60 to-white py-24 sm:py-32 overflow-hidden">
-      {/* Ambient charter glow — slow independent loop */}
-      <motion.div
-        animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.06, 1] }}
-        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[28rem] h-[28rem] rounded-full"
-      >
-        <div className="absolute inset-0 rounded-full bg-primary/15 blur-3xl" />
-        <div className="absolute inset-10 rounded-full bg-secondary/10 blur-3xl" />
-      </motion.div>
-
+    <section ref={ref} className="relative py-24 sm:py-32 overflow-hidden">
       <div className="relative z-10 text-center px-6">
         <motion.p
           initial={{ opacity: 0 }}
