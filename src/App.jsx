@@ -1,28 +1,21 @@
+import { Routes, Route } from 'react-router-dom';
 import { LanguageProvider } from './i18n/LanguageContext';
-import Navbar from './components/Navbar';
-import Hero from './components/Hero';
-import ZUIHubStory from './components/sections/ZUIHubStory';
-import FeaturedMarquee from './components/sections/FeaturedMarquee';
-import HowTimeline from './components/sections/HowTimeline';
-import Coverage from './components/sections/Coverage';
-import PricingTeaser from './components/sections/PricingTeaser';
-import Footer from './components/Footer';
 import CookieBanner from './components/CookieBanner';
+import Home from './pages/Home';
+import Tarifs from './pages/Tarifs';
+import Confidentialite from './pages/Confidentialite';
+import Connexion from './pages/Connexion';
 
 function App() {
   return (
     <LanguageProvider>
       <div className="min-h-screen bg-white">
-        <Navbar />
-        <main>
-          <Hero />
-          <ZUIHubStory />
-          <FeaturedMarquee />
-          <HowTimeline />
-          <Coverage />
-          <PricingTeaser />
-        </main>
-        <Footer />
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/tarifs" element={<Tarifs />} />
+          <Route path="/confidentialite" element={<Confidentialite />} />
+          <Route path="/connexion" element={<Connexion />} />
+        </Routes>
         <CookieBanner />
       </div>
     </LanguageProvider>
