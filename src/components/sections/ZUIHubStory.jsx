@@ -36,19 +36,22 @@ const STEP_EASE = 'power2.inOut';
 
 // One distinct "camera personality" per universe (6, not 3, so nothing
 // repeats across a full pass) so the zooms/dézooms never feel monotone.
-// Each style varies the ease curve, a touch of rotation on the flight, and
-// how hard the image punches in — but never the tween count or position
-// anchors, so this can't reintroduce timing conflicts between blocks.
+// Only the ease curve varies — no rotation, no independent image scale-up,
+// no title bump. Those extra transforms on the blocks themselves read as
+// unwanted "movement" layered on top of the camera's own zoom, per
+// feedback that it looked messy — the camera move alone (in position and
+// scale) is the entire effect now.
 const FLIGHT_STYLES = [
-  { inEase: 'power2.out', deepenEase: 'power2.in', ringEase: 'back.out(1.4)', imgPunch: 1.2, rotate: 0 },
-  { inEase: 'power1.inOut', deepenEase: 'power1.inOut', ringEase: 'elastic.out(1,0.65)', imgPunch: 1.14, rotate: -1.5 },
-  { inEase: 'back.out(1.05)', deepenEase: 'power3.in', ringEase: 'back.out(2)', imgPunch: 1.28, rotate: 1.5 },
-  { inEase: 'sine.inOut', deepenEase: 'sine.in', ringEase: 'power1.out', imgPunch: 1.1, rotate: 0 },
-  { inEase: 'power4.out', deepenEase: 'power4.in', ringEase: 'back.out(1.8)', imgPunch: 1.32, rotate: -2 },
-  { inEase: 'circ.out', deepenEase: 'circ.in', ringEase: 'elastic.out(1,0.5)', imgPunch: 1.18, rotate: 2 },
+  { inEase: 'power2.out', deepenEase: 'power2.in', ringEase: 'back.out(1.4)' },
+  { inEase: 'power1.inOut', deepenEase: 'power1.inOut', ringEase: 'elastic.out(1,0.65)' },
+  { inEase: 'back.out(1.05)', deepenEase: 'power3.in', ringEase: 'back.out(2)' },
+  { inEase: 'sine.inOut', deepenEase: 'sine.in', ringEase: 'power1.out' },
+  { inEase: 'power4.out', deepenEase: 'power4.in', ringEase: 'back.out(1.8)' },
+  { inEase: 'circ.out', deepenEase: 'circ.in', ringEase: 'elastic.out(1,0.5)' },
 ];
 
 function ZUIHubStory() {
+  const wrapperRef = useRef(null);
   const rootRef = useRef(null);
   const canvasRef = useRef(null);
   const imgRefs = useRef([]);
@@ -63,8 +66,14 @@ function ZUIHubStory() {
   const stopsRef = useRef([]);
   const currentStepRef = useRef(0);
   const isAnimatingRef = useRef(false);
-  const wheelAccumRef = useRef(0);
-  const lastWheelTimeRef = useRef(0);
+  const pendingDirRef = useRef(0);
+  const accumRef = useRef(0);
+  const lastGestureTimeRef = useRef(0);
+  const anchorYRef = useRef(0);
+  const bufferRef = useRef(0);
+  const lastScrollYRef = useRef(0);
+  const programmaticScrollRef = useRef(false);
+  const didInitialSnapRef = useRef(false);
   const [inSection, setInSection] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
@@ -90,7 +99,7 @@ function ZUIHubStory() {
       // header never overlaps blocks that sit near the top of the canvas.
       const yOffset = navHeight / 2;
 
-      gsap.set(canvas, { x: 0, y: yOffset, scale: OVERVIEW, rotate: 0, transformOrigin: '50% 50%' });
+      gsap.set(canvas, { x: 0, y: yOffset, scale: OVERVIEW, transformOrigin: '50% 50%' });
       gsap.set(imgRefs.current, { scale: 1, transformOrigin: '50% 50%' });
       gsap.set(descRefs.current, { opacity: 0, y: 12 });
       gsap.set(ringRefs.current, { opacity: 0, scale: 0.92 });
@@ -106,18 +115,13 @@ function ZUIHubStory() {
       const tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.inOut' } });
       tlRef.current = tl;
 
-      const flyTo = (dx, dy, S, dur, ease, pos, rotate = 0) =>
-        tl.to(
-          canvas,
-          { x: -dx * S, y: -dy * S + yOffset, scale: S, rotate, duration: dur, ease: ease || 'power3.inOut' },
-          pos ?? '>'
-        );
+      const flyTo = (dx, dy, S, dur, ease, pos) =>
+        tl.to(canvas, { x: -dx * S, y: -dy * S + yOffset, scale: S, duration: dur, ease: ease || 'power3.inOut' }, pos ?? '>');
 
       const stops = ['overview-0'];
       tl.addLabel('overview-0');
 
       positions.forEach((p, i) => {
-        const img = imgRefs.current[i];
         const desc = descRefs.current[i];
         const ring = ringRefs.current[i];
         const overlay = overlayRefs.current[i];
@@ -136,12 +140,9 @@ function ZUIHubStory() {
         // ending flyTo. Without this, this block's camera flight used to
         // start early and visibly collide with the previous block's outro.
         let t0 = tl.duration();
-        flyTo(p.x, p.y, ZOOM_1, T.in, style.inEase, t0, style.rotate);
+        flyTo(p.x, p.y, ZOOM_1, T.in, style.inEase, t0);
         tl.to(ring, { opacity: 1, scale: 1, duration: T.in * 0.6, ease: style.ringEase }, '<');
         tl.to(desc, { opacity: 1, y: 0, duration: T.in * 0.45, ease: 'power2.out' }, `>-${T.in * 0.25}`);
-        if (title) {
-          tl.to(title, { scale: 1.05, duration: T.in * 0.5 }, '<');
-        }
         // Anchored on the phase's own start time (not chained with '<') so it
         // never shifts the ring/desc/title relative-position sequence above.
         tl.to(others, { opacity: 0.15, filter: 'blur(10px)', duration: T.in, ease: 'power2.out' }, t0);
@@ -158,8 +159,7 @@ function ZUIHubStory() {
           tl.to(title, { opacity: 0, scale: 1, duration: T.deepen * 0.3 }, '<');
         }
         t0 = tl.duration();
-        flyTo(p.x, p.y, ZOOM_2, T.deepen, style.deepenEase, undefined, style.rotate);
-        tl.to(img, { scale: style.imgPunch, duration: T.deepen, ease: style.deepenEase }, '<');
+        flyTo(p.x, p.y, ZOOM_2, T.deepen, style.deepenEase);
         tl.to(overlay, { opacity: 1, pointerEvents: 'auto', duration: T.deepen * 0.55, ease: 'power2.inOut' }, `>-${T.deepen * 0.45}`);
         if (flash) {
           tl.set(flash, { '--flash-color': ringColor }, t0);
@@ -173,8 +173,7 @@ function ZUIHubStory() {
         // zoom-1 on the way out — matches the "big dézoom" the story needs
         // between one universe's detail and the next universe's overview.
         tl.to(overlay, { opacity: 0, pointerEvents: 'none', duration: T.surface * 0.45, ease: 'power2.in' });
-        flyTo(p.x, p.y, ZOOM_1, T.surface, 'power2.out', undefined, style.rotate);
-        tl.to(img, { scale: 1, duration: T.surface, ease: 'power2.out' }, '<');
+        flyTo(p.x, p.y, ZOOM_1, T.surface, 'power2.out');
         tl.to(desc, { opacity: 1, y: 0, duration: T.surface * 0.5 }, `>-${T.surface * 0.35}`);
         if (title) {
           tl.to(title, { opacity: 1, duration: T.surface * 0.5 }, '<');
@@ -184,7 +183,7 @@ function ZUIHubStory() {
         t0 = tl.duration();
         tl.to(ring, { opacity: 0, scale: 0.92, duration: T.out * 0.4, ease: 'power2.in' });
         tl.to(desc, { opacity: 0, duration: T.out * 0.35 }, '<');
-        flyTo(0, 0, OVERVIEW, T.out, 'power3.inOut', undefined, 0);
+        flyTo(0, 0, OVERVIEW, T.out, 'power3.inOut');
         tl.to(others, { opacity: 1, filter: 'blur(0px)', duration: T.out, ease: 'power2.inOut' }, t0);
         tl.addLabel(`overview-${i + 1}`);
         // Every intermediate "back to overview" is NOT its own stop — it
@@ -219,6 +218,11 @@ function ZUIHubStory() {
     return STEP_DURATION.outIn; // zoom-2 of one universe <-> zoom-1 of the next (merged dézoom + re-zoom)
   };
 
+  // A scroll intent that arrives while a transition is still playing isn't
+  // dropped — it's banked in pendingDirRef and fired the instant the current
+  // clip finishes, like a queued video. That's what makes "scroll again
+  // while it's mid-flight" actually count instead of silently doing
+  // nothing (which read as "I have to scroll it so many times").
   const goToStep = (rawIndex) => {
     const stops = stopsRef.current;
     const tl = tlRef.current;
@@ -234,9 +238,49 @@ function ZUIHubStory() {
       ease: STEP_EASE,
       onComplete: () => {
         isAnimatingRef.current = false;
+        const dir = pendingDirRef.current;
+        if (dir) {
+          pendingDirRef.current = 0;
+          goToStep(currentStepRef.current + dir);
+        }
       },
     });
   };
+
+  // Keep the anchor (the document scrollY at which the sticky section sits
+  // pinned at top:0) and the buffer size (how much extra scroll room the
+  // wrapper gives us) up to date. Recomputed on mount and on resize, since
+  // layout above this section can shift either value.
+  useEffect(() => {
+    const measure = () => {
+      if (!wrapperRef.current) return;
+      const rect = wrapperRef.current.getBoundingClientRect();
+      anchorYRef.current = rect.top + window.scrollY;
+      bufferRef.current = Math.max(window.innerHeight, 600);
+
+      // If the page loads (or reloads) already scrolled into the middle of
+      // this section's buffer zone — e.g. a mobile browser restoring the
+      // previous scroll position — our internal step state (always starts
+      // at step 0 / overview) would be out of sync with where the page
+      // actually is. Snap back to the entry point once so the two always
+      // agree; this is what previously let the story get permanently stuck
+      // "used up" after a reload.
+      if (!didInitialSnapRef.current) {
+        didInitialSnapRef.current = true;
+        const y = window.scrollY;
+        if (y > anchorYRef.current - 4 && y < anchorYRef.current + bufferRef.current) {
+          window.scrollTo(0, anchorYRef.current);
+        }
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure, { passive: true });
+    window.addEventListener('load', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('load', measure);
+    };
+  }, []);
 
   // Keep the rail's visibility in sync with whether this section currently
   // fills the viewport (i.e. is the one the user is "inside" right now).
@@ -260,94 +304,84 @@ function ZUIHubStory() {
     };
   }, []);
 
-  // Wheel: while the section fills the viewport, every notch is intercepted
-  // and advances/retreats exactly one step — except at the very first or
-  // last step, where we let the browser scroll on to the previous/next
-  // section instead of trapping the user inside the story.
+  // The whole step engine, driven off the document's actual scroll position
+  // instead of separate wheel/touch listeners. Rationale for the rewrite:
   //
-  // A trackpad fires many `wheel` events per gesture with a tiny deltaY
-  // each (often well under 1). Comparing a single event's delta to a fixed
-  // threshold meant those events all fell into the "too small to count"
-  // branch, which still called preventDefault() — so the page stopped
-  // scrolling but no step ever advanced, reading as fully stuck. We now
-  // accumulate deltaY across events (reset after a pause or a direction
-  // flip) and only step once the running total crosses the threshold, so a
-  // gentle trackpad swipe and a notchy mouse wheel both work the same way.
+  // - `wheel` and `touchmove` can be preventDefault()'d while the finger/
+  //   wheel is actively moving, but a mobile browser's post-release
+  //   momentum scroll fires NO further touch events at all — there's
+  //   nothing to preventDefault, so a fast flick could sail straight past
+  //   the whole section before any JS ran. `scroll` events, in contrast,
+  //   keep firing throughout native momentum, so this is the only event
+  //   that can reliably catch a fast fling on mobile.
+  // - Because the section is `sticky` inside a wrapper taller than the
+  //   viewport (see the JSX below), it renders pinned at top:0 for *any*
+  //   scrollY between the anchor and anchor+buffer — so nudging scrollY
+  //   back to the anchor every captured event is 100% invisible (nothing
+  //   moves on screen) while guaranteeing the buffer never gets consumed
+  //   by legitimate story progress, only reserved for absorbing whatever a
+  //   single scroll/fling event's overshoot is.
+  // - A scroll intent that lands while a clip is still playing is banked
+  //   (see goToStep's onComplete) instead of silently discarded, so
+  //   "scrolling again mid-animation" always counts.
   useEffect(() => {
-    const WHEEL_THRESHOLD = 45;
+    const THRESHOLD = 60;
     const GESTURE_TIMEOUT = 400;
-    const onWheel = (e) => {
-      const stops = stopsRef.current;
-      if (!stops.length || !rootRef.current) return;
-      if (Math.abs(rootRef.current.getBoundingClientRect().top) >= 2) return;
 
-      const rawDir = e.deltaY > 0 ? 1 : e.deltaY < 0 ? -1 : 0;
-      if (rawDir === 0) return;
+    const onScroll = () => {
+      if (programmaticScrollRef.current) {
+        programmaticScrollRef.current = false;
+        lastScrollYRef.current = window.scrollY;
+        return;
+      }
+      const stops = stopsRef.current;
+      if (!stops.length) return;
+
+      const scrollY = window.scrollY;
+      const anchor = anchorYRef.current;
+      const delta = scrollY - lastScrollYRef.current;
+      lastScrollYRef.current = scrollY;
+      if (!delta) return;
 
       const atStart = currentStepRef.current === 0;
       const atEnd = currentStepRef.current === stops.length - 1;
-      if ((rawDir === -1 && atStart) || (rawDir === 1 && atEnd)) {
-        wheelAccumRef.current = 0;
-        return; // release to the next/previous section
-      }
+      // Release to native scroll: at the very first stop, still above the
+      // section (haven't arrived yet, or scrolling back up past it); at the
+      // very last stop, already below it (finished, or scrolling on past).
+      // No magnitude check here on purpose — a scroll/fling of *any* size
+      // that lands past the anchor while at the first/last stop must still
+      // be captured and corrected below, otherwise a big enough single jump
+      // (exactly what mobile momentum can produce) would skip the section
+      // outright instead of being reeled back in.
+      if (atStart && scrollY < anchor) return;
+      if (atEnd && scrollY > anchor) return;
 
-      e.preventDefault();
-      if (isAnimatingRef.current) return;
+      // Captured: hold the page at the anchor (invisible, thanks to
+      // sticky) and turn the raw scroll delta into step-advance intent.
+      programmaticScrollRef.current = true;
+      window.scrollTo(0, anchor);
+      lastScrollYRef.current = anchor;
 
       const now = performance.now();
-      if (now - lastWheelTimeRef.current > GESTURE_TIMEOUT || Math.sign(wheelAccumRef.current) === -rawDir) {
-        wheelAccumRef.current = 0;
+      if (now - lastGestureTimeRef.current > GESTURE_TIMEOUT || Math.sign(accumRef.current) === -Math.sign(delta)) {
+        accumRef.current = 0;
       }
-      lastWheelTimeRef.current = now;
-      wheelAccumRef.current += e.deltaY;
+      lastGestureTimeRef.current = now;
+      accumRef.current += delta;
 
-      if (Math.abs(wheelAccumRef.current) >= WHEEL_THRESHOLD) {
-        const dir = wheelAccumRef.current > 0 ? 1 : -1;
-        wheelAccumRef.current = 0;
-        goToStep(currentStepRef.current + dir);
+      if (Math.abs(accumRef.current) >= THRESHOLD) {
+        const dir = accumRef.current > 0 ? 1 : -1;
+        accumRef.current = 0;
+        if (isAnimatingRef.current) {
+          pendingDirRef.current = dir;
+        } else {
+          goToStep(currentStepRef.current + dir);
+        }
       }
     };
-    window.addEventListener('wheel', onWheel, { passive: false });
-    return () => window.removeEventListener('wheel', onWheel);
-  }, []);
 
-  // Touch: same one-swipe-one-step rule, releasing to native scroll once a
-  // swipe crosses the first/last step boundary.
-  useEffect(() => {
-    let lastY = 0;
-    let released = false;
-    const onTouchStart = (e) => {
-      lastY = e.touches[0].clientY;
-      released = false;
-    };
-    const onTouchMove = (e) => {
-      const stops = stopsRef.current;
-      if (!stops.length || !rootRef.current || released) return;
-      if (Math.abs(rootRef.current.getBoundingClientRect().top) >= 2) return;
-      const y = e.touches[0].clientY;
-      const delta = lastY - y; // positive = finger moving up = scroll-down intent
-      if (Math.abs(delta) < 28) {
-        e.preventDefault();
-        return;
-      }
-      const dir = delta > 0 ? 1 : -1;
-      const atStart = currentStepRef.current === 0;
-      const atEnd = currentStepRef.current === stops.length - 1;
-      if ((dir === -1 && atStart) || (dir === 1 && atEnd)) {
-        released = true;
-        return;
-      }
-      e.preventDefault();
-      lastY = y;
-      if (isAnimatingRef.current) return;
-      goToStep(currentStepRef.current + dir);
-    };
-    window.addEventListener('touchstart', onTouchStart, { passive: true });
-    window.addEventListener('touchmove', onTouchMove, { passive: false });
-    return () => {
-      window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('touchmove', onTouchMove);
-    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   const goToLabel = (label) => {
@@ -365,7 +399,7 @@ function ZUIHubStory() {
     // entirely on a normal scroll. Sticky + a generous buffer keeps the
     // section pinned at top:0 across a wide scroll range, so entry is
     // caught reliably no matter how large a single scroll/swipe delta is.
-    <div className="relative" style={{ height: 'calc(100svh + 100vh)' }}>
+    <div ref={wrapperRef} className="relative" style={{ height: 'calc(100svh + 100vh)' }}>
       <section
         ref={rootRef}
         data-navbar-theme="dark"
@@ -652,39 +686,20 @@ function PanelHeading({ icon, color, children }) {
   );
 }
 
+// Each universe gets its own genuinely different way of presenting the
+// same three pieces of data (steps / who / trust) — not a shared template
+// reshuffled, but a distinct visual metaphor picked to fit that universe:
+// a timeline for a vote's stages, a ticket stub for an event, a radial
+// dial for a donation goal, a progress bar for crowdfunding milestones, a
+// matchmaking split for sponsoring, and a scattered ticket grid for a raffle.
+const DETAIL_LAYOUTS = [TimelineDetail, TicketDetail, RadialDetail, ProgressDetail, SplitDetail, RaffleDetail];
+
 function ImmersiveOverlay({ univ, overlayRef, index }) {
   const color = RING_COLORS[index % RING_COLORS.length];
   const steps = univ.nested.how.text.split('→').map((s) => s.trim()).filter(Boolean);
   const tags = univ.nested.who.text.split(',').map((s) => s.trim()).filter(Boolean);
   const trust = univ.nested.trust;
-  // Cycles through three genuinely different compositions (not just a
-  // column/row swap) so the six detail screens read as a designed set
-  // instead of the same rigid 3-box template repeated with a shuffle.
-  const variant = index % 3;
-
-  const stepsPanel = (
-    <Panel className={variant === 0 ? 'lg:col-span-3' : variant === 2 ? 'lg:col-start-2 lg:col-span-8' : ''}>
-      <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
-      <StepsWidget steps={steps} color={color} layout={variant === 1 ? 'row' : 'column'} />
-    </Panel>
-  );
-
-  const tagsPanel = (
-    <Panel className={variant === 2 ? 'lg:col-start-1 lg:col-span-5 lg:mt-10' : ''}>
-      <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
-      <TagsWidget tags={tags} />
-    </Panel>
-  );
-
-  const trustPanel = (
-    <div
-      className={`rounded-3xl p-5 sm:p-7 border backdrop-blur-sm ${variant === 2 ? 'lg:col-start-6 lg:col-span-5 lg:-mt-6' : ''}`}
-      style={{ background: `${color}14`, borderColor: `${color}40` }}
-    >
-      <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
-      <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
-    </div>
-  );
+  const Layout = DETAIL_LAYOUTS[index % DETAIL_LAYOUTS.length];
 
   return (
     <div
@@ -718,35 +733,233 @@ function ImmersiveOverlay({ univ, overlayRef, index }) {
             </p>
           </div>
 
-          {variant === 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
-              {stepsPanel}
-              <div className="lg:col-span-2 flex flex-col gap-4 sm:gap-6">
-                {tagsPanel}
-                {trustPanel}
-              </div>
-            </div>
-          )}
-          {variant === 1 && (
-            <div className="flex flex-col gap-4 sm:gap-6">
-              {stepsPanel}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                {tagsPanel}
-                {trustPanel}
-              </div>
-            </div>
-          )}
-          {variant === 2 && (
-            // Diagonal, offset composition: the three panels sit on a wide
-            // 12-col grid with staggered vertical offsets instead of stacked
-            // rows, so the reading path zig-zags left→right→left.
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
-              {stepsPanel}
-              {tagsPanel}
-              {trustPanel}
-            </div>
-          )}
+          <Layout steps={steps} tags={tags} trust={trust} color={color} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Votes & Scrutins — a connected vertical timeline: fits a scrutiny's
+// sequential, procedural feel (create → vote → certify).
+function TimelineDetail({ steps, tags, trust, color }) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
+      <Panel className="lg:col-span-3">
+        <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
+        <StepsWidget steps={steps} color={color} layout="column" />
+      </Panel>
+      <div className="lg:col-span-2 flex flex-col gap-4 sm:gap-6">
+        <Panel>
+          <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
+          <TagsWidget tags={tags} />
+        </Panel>
+        <div className="rounded-3xl p-5 sm:p-7 border backdrop-blur-sm" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+          <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
+          <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Billetterie & Événementiel — a horizontal boarding-pass / ticket stub:
+// steps run left-to-right like stages printed on a ticket, with a
+// perforated dashed divider before the "stub" (who/trust) half.
+function TicketDetail({ steps, tags, trust, color }) {
+  return (
+    <div className="rounded-[28px] bg-white/[0.06] border border-white/10 backdrop-blur-sm overflow-hidden">
+      <div className="p-6 sm:p-8">
+        <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
+        <div className="flex flex-col sm:flex-row items-start sm:items-stretch gap-6 sm:gap-0">
+          {steps.map((step, idx) => (
+            <div key={idx} className="flex-1 flex sm:flex-col items-center gap-3 sm:gap-4 relative">
+              <span
+                className="flex-none w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-ink-900"
+                style={{ backgroundColor: color }}
+              >
+                {idx + 1}
+              </span>
+              <p className="text-white/85 text-sm leading-snug normal-case text-left sm:text-center">{step}</p>
+              {idx < steps.length - 1 && (
+                <span
+                  className="hidden sm:block absolute top-5 left-[calc(50%+28px)] right-[calc(-50%+28px)] border-t-2 border-dashed"
+                  style={{ borderColor: `${color}55` }}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="relative border-t-2 border-dashed border-white/15 mx-6 sm:mx-10">
+        <span className="absolute -left-[38px] -top-3 w-6 h-6 rounded-full bg-ink-900" />
+        <span className="absolute -right-[38px] -top-3 w-6 h-6 rounded-full bg-ink-900" />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 p-6 sm:p-8">
+        <div>
+          <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
+          <TagsWidget tags={tags} />
+        </div>
+        <div className="rounded-2xl p-5 border" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+          <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
+          <p className="text-white/90 text-sm leading-relaxed normal-case">{trust.text}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Système de Dons & Cagnottes — a radial dial: the trust statement sits at
+// the center like a goal, with the steps orbiting it as satellites, echoing
+// a fundraising meter rather than a plain list.
+function RadialDetail({ steps, tags, trust, color }) {
+  return (
+    <div className="flex flex-col items-center gap-8 sm:gap-12">
+      <div className="relative w-full max-w-md aspect-square mx-auto hidden sm:flex items-center justify-center">
+        <svg viewBox="0 0 200 200" className="absolute inset-0 w-full h-full">
+          <circle cx="100" cy="100" r="88" fill="none" stroke={`${color}33`} strokeWidth="2" />
+          <circle cx="100" cy="100" r="88" fill="none" stroke={color} strokeWidth="3" strokeDasharray="180 400" strokeLinecap="round" />
+        </svg>
+        <div
+          className="relative z-10 w-[58%] aspect-square rounded-full flex flex-col items-center justify-center text-center px-6"
+          style={{ background: `${color}14`, border: `1px solid ${color}40` }}
+        >
+          {IconShield({ color })}
+          <p className="mt-2 text-white/90 text-xs leading-relaxed normal-case">{trust.text}</p>
+        </div>
+        {steps.map((step, idx) => {
+          const angle = (360 / steps.length) * idx - 90;
+          const rad = (angle * Math.PI) / 180;
+          const x = 50 + 46 * Math.cos(rad);
+          const y = 50 + 46 * Math.sin(rad);
+          return (
+            <div
+              key={idx}
+              className="absolute w-[34%] rounded-2xl p-3 text-center bg-white/[0.07] border border-white/15 backdrop-blur-sm"
+              style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}
+            >
+              <span
+                className="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold text-ink-900 mb-1.5"
+                style={{ backgroundColor: color }}
+              >
+                {idx + 1}
+              </span>
+              <p className="text-white/85 text-xs leading-snug normal-case">{step}</p>
+            </div>
+          );
+        })}
+      </div>
+      {/* Mobile: the orbit doesn't fit comfortably, so the same content
+          becomes a simple stacked read instead of a cramped circle. */}
+      <div className="sm:hidden w-full flex flex-col gap-4">
+        <div className="rounded-3xl p-5 border backdrop-blur-sm text-center" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+          {IconShield({ color })}
+          <p className="mt-2 text-white/90 text-sm leading-relaxed normal-case">{trust.text}</p>
+        </div>
+        <StepsWidget steps={steps} color={color} layout="column" />
+      </div>
+      <Panel className="w-full">
+        <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
+        <TagsWidget tags={tags} />
+      </Panel>
+    </div>
+  );
+}
+
+// Crowdfunding — a thick horizontal progress bar with the steps as labeled
+// milestones along it, echoing a funding goal filling up.
+function ProgressDetail({ steps, tags, trust, color }) {
+  return (
+    <div className="flex flex-col gap-6 sm:gap-8">
+      <Panel>
+        <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
+        <div className="pt-1 pb-2">
+          <div className="h-3 rounded-full bg-white/10 overflow-hidden">
+            <div className="h-full rounded-full" style={{ width: '72%', background: `linear-gradient(90deg, ${color}, ${color}aa)` }} />
+          </div>
+          <div className="flex justify-between mt-5 gap-2">
+            {steps.map((step, idx) => (
+              <div key={idx} className="flex-1 flex flex-col items-center text-center">
+                <span className="w-3 h-3 rounded-full mb-3" style={{ backgroundColor: color }} />
+                <p className="text-white/85 text-xs sm:text-sm leading-snug normal-case">{step}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Panel>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+        <Panel>
+          <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
+          <TagsWidget tags={tags} />
+        </Panel>
+        <div className="rounded-3xl p-5 sm:p-7 border backdrop-blur-sm" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+          <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
+          <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Sponsoring — a split-screen "matchmaking" layout: organizer's steps on
+// one side, the brand-facing value prop (who/trust) tinted on the other.
+function SplitDetail({ steps, tags, trust, color }) {
+  return (
+    <div className="rounded-[28px] bg-white/[0.06] border border-white/10 backdrop-blur-sm overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-2">
+        <div className="p-6 sm:p-8 lg:border-r border-white/10 border-b lg:border-b-0">
+          <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
+          <StepsWidget steps={steps} color={color} layout="column" />
+        </div>
+        <div className="p-6 sm:p-8 flex flex-col gap-6 sm:gap-8" style={{ background: `${color}0d` }}>
+          <div>
+            <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
+            <TagsWidget tags={tags} />
+          </div>
+          <div className="rounded-2xl p-5 border" style={{ background: `${color}14`, borderColor: `${color}40` }}>
+            <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
+            <p className="text-white/90 text-sm leading-relaxed normal-case">{trust.text}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Jeux-Concours & Tombolas — a scattered grid of raffle-ticket cards
+// (dashed borders, slight alternating tilt) instead of a tidy list.
+function RaffleDetail({ steps, tags, trust, color }) {
+  return (
+    <div className="flex flex-col gap-8 sm:gap-10">
+      <div>
+        <PanelHeading icon={IconSteps} color={color}>Comment ça marche</PanelHeading>
+        <div className="flex flex-wrap gap-5 sm:gap-6 justify-center">
+          {steps.map((step, idx) => (
+            <div
+              key={idx}
+              className="relative w-full sm:w-56 rounded-2xl bg-white/[0.06] border-2 border-dashed p-4 sm:p-5"
+              style={{ borderColor: `${color}55`, transform: `rotate(${(idx % 2 === 0 ? -1 : 1) * (2 + idx)}deg)` }}
+            >
+              <span
+                className="absolute -top-3 -left-3 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-ink-900"
+                style={{ backgroundColor: color }}
+              >
+                {idx + 1}
+              </span>
+              <p className="text-white/85 text-sm leading-snug normal-case">{step}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+        <div className="rounded-3xl p-5 sm:p-7 border-2" style={{ background: `${color}14`, borderColor: color }}>
+          <PanelHeading icon={IconShield} color={color}>Confiance</PanelHeading>
+          <p className="text-white/90 text-sm sm:text-base leading-relaxed normal-case">{trust.text}</p>
+        </div>
+        <Panel>
+          <PanelHeading icon={IconPeople} color={color}>Pour qui</PanelHeading>
+          <TagsWidget tags={tags} />
+        </Panel>
       </div>
     </div>
   );
