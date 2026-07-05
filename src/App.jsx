@@ -5,6 +5,7 @@ import Home from './pages/Home';
 import Tarifs from './pages/Tarifs';
 import Confidentialite from './pages/Confidentialite';
 import Connexion from './pages/Connexion';
+import Contact from './pages/Contact';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <Route path="/tarifs" element={<Tarifs />} />
           <Route path="/confidentialite" element={<Confidentialite />} />
           <Route path="/connexion" element={<Connexion />} />
+          <Route path="/contact" element={<Contact />} />
         </Routes>
         <CookieBanner />
       </div>
