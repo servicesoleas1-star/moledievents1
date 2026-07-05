@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import WhatsAppFloatingButton from "../components/WhatsAppFloatingButton.jsx";
 import { getPlatformConfig } from "../config/PlatformConfig.js";
 
@@ -141,52 +141,6 @@ function WaveDivider() {
         strokeLinecap="round"
       />
     </svg>
-  );
-}
-
-function CookieBanner({ t }) {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const consent = window.localStorage
-      ? window.localStorage.getItem("moledi_cookie_consent")
-      : null;
-    if (!consent) setVisible(true);
-  }, []);
-
-  const accept = () => {
-    try {
-      window.localStorage.setItem("moledi_cookie_consent", "accepted");
-    } catch (e) {
-      /* localStorage indisponible — on masque quand même pour cette session */
-    }
-    setVisible(false);
-  };
-
-  if (!visible) return null;
-
-  return (
-    <div
-      className="fixed bottom-0 left-0 right-0 z-50 px-4 py-4 md:px-8 md:py-5 flex flex-col md:flex-row items-center gap-4"
-      style={{ backgroundColor: NAVY }}
-      role="dialog"
-      aria-label="Consentement aux cookies"
-    >
-      <p className="text-sm text-white/90 flex-1 text-center md:text-left">
-        {t.text}{" "}
-        <a href="/confidentialite" className="underline hover:text-white">
-          {t.link}
-        </a>
-        .
-      </p>
-      <button
-        onClick={accept}
-        className="shrink-0 px-5 py-2 rounded-full text-sm font-semibold text-white transition-colors hover:opacity-90"
-        style={{ backgroundColor: ORANGE }}
-      >
-        {t.accept}
-      </button>
-    </div>
   );
 }
 
@@ -446,7 +400,6 @@ export default function ContactPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: BG, fontFamily: "'Inter', sans-serif" }}>
       <WhatsAppFloatingButton phoneNumber={WHATSAPP_NUMBER} />
-      <CookieBanner t={t.cookie} />
 
       {/* Header */}
       <header className="relative overflow-hidden">

@@ -3,17 +3,15 @@
  * production-side. Keeps the rest of the app decoupled from where files live.
  */
 
-// Brand — static assets in /public. Replace by dropping files with the same
-// filename in /public/ (no code change required).
+// Brand — exactly two logo files, both transparent PNGs (no baked-in
+// background), droppable in /public/ with no code change:
+//   - logo: the full wordmark, used everywhere the brand needs to be
+//     prominent (main header, footer, hero panels).
+//   - logoMark: the "M" symbol alone, used only where space is tight
+//     (compact/secondary placements).
 export const media = {
-  // Logo — dark variant (for use over LIGHT backgrounds like the scrolled nav
-  // and the footer's white pill). Drop your PNG (transparent bg) at
-  // /public/logo.png to override.
-  logo: '/logo.png',
-  // Light variant (for use over DARK backgrounds like the hero-transparent
-  // navbar and the ZUI story). Drop /public/logo-light.png to override.
-  logoLight: '/logo-light.png',
-  logoFallback: '/logo.jpg',
+  logo: '/logo-principal.png',
+  logoMark: '/logo-mark.png',
   heroPoster: '/hero-poster.jpg',
   heroVideo: '/hero-video.mp4',
 };

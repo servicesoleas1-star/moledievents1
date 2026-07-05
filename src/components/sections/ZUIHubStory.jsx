@@ -531,9 +531,8 @@ function CenterLogo({ logoRef }) {
 function LogoImg() {
   return (
     <img
-      src={media.logo}
+      src={media.logoMark}
       alt="Moledi Event"
-      onError={(e) => { e.currentTarget.src = media.logoFallback; }}
       className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
     />
   );

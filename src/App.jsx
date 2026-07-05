@@ -1,6 +1,5 @@
 import { Routes, Route } from 'react-router-dom';
 import { LanguageProvider } from './i18n/LanguageContext';
-import CookieBanner from './components/CookieBanner';
 import Home from './pages/Home';
 import Tarifs from './pages/Tarifs';
 import Confidentialite from './pages/Confidentialite';
@@ -18,7 +17,6 @@ function App() {
           <Route path="/connexion" element={<Connexion />} />
           <Route path="/contact" element={<Contact />} />
         </Routes>
-        <CookieBanner />
       </div>
     </LanguageProvider>
   );

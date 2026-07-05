@@ -60,6 +60,7 @@ function PaymentMethodsGrid() {
   const { methods } = usePaymentMethods();
   const live = methods.filter((m) => m.integrated);
   const upcoming = methods.filter((m) => !m.integrated);
+  const empty = live.length === 0 && upcoming.length === 0;
 
   return (
     <section className="py-16 sm:py-20 bg-ink-100/50">
@@ -76,6 +77,12 @@ function PaymentMethodsGrid() {
           </p>
           <h2 className="text-3xl sm:text-5xl text-ink-900">Les opérateurs que vous utilisez déjà</h2>
         </motion.div>
+
+        {empty && (
+          <p className="text-center text-sm text-ink-700 italic">
+            Aucun opérateur disponible pour le moment.
+          </p>
+        )}
 
         {live.length > 0 && (
           <motion.div

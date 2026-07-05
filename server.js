@@ -2,11 +2,20 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import bcrypt from 'bcryptjs';
+import rateLimit from 'express-rate-limit';
 import supabase from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'dist')));
@@ -15,13 +24,23 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// Throttles brute-force credential guessing — 10 attempts per 15 minutes
+// per IP, independent of whether each attempt succeeds or fails.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, errors: ['Trop de tentatives. Réessayez dans quelques minutes.'] },
+});
+
 /**
  * Sign-in — checks the `users` table (UML DC-02 `User`: email, password_hash,
  * status, role) directly, no third-party auth provider. Only email +
  * password are verified here; password reset and registration are separate
  * pages/flows and are intentionally not touched by this endpoint.
  */
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { email, password, visitorId } = req.body || {};
 
   if (!email || !password) {
@@ -37,8 +56,17 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (error) throw error;
 
+    // Same generic message whether the account doesn't exist or the
+    // password is wrong — distinguishing the two lets an attacker enumerate
+    // registered emails.
+    const invalidCredentials = () =>
+      res.status(401).json({ ok: false, errors: ['Email ou mot de passe incorrect.'] });
+
     if (!user) {
-      return res.status(401).json({ ok: false, errors: ['Aucun compte trouvé avec cette adresse email.'] });
+      // Still run bcrypt against a dummy hash so the response time doesn't
+      // leak whether the email exists.
+      await bcrypt.compare(password, '$2a$10$CwTycUXWue0Thq9StjUM0uJ8lVQaGjkC3f6dGxjmqhF6xUwsr2gqK');
+      return invalidCredentials();
     }
     if (user.status === 'SUSPENDED' || user.status === 'DELETED') {
       return res.status(403).json({ ok: false, errors: ['Ce compte a été suspendu. Contactez le support.'] });
@@ -54,7 +82,7 @@ app.post('/api/auth/login', async (req, res) => {
     }).then(null, () => {}); // best-effort audit trail, never blocks the response
 
     if (!valid) {
-      return res.status(401).json({ ok: false, errors: ['Mot de passe incorrect.'] });
+      return invalidCredentials();
     }
 
     // The visitor_id cookie (if any) is owned by another workstream; we only

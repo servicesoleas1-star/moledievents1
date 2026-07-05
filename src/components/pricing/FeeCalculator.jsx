@@ -12,7 +12,9 @@ const formatAmount = (n) =>
  * CommissionConfig table stand-in) and its country/currency/methods from
  * `/api/countries` (the real CountryConfig table, admin-configured). If that
  * table is empty, the country picker and result panel simply have nothing
- * to show — no fallback country is invented client-side.
+ * to show — no fallback country is invented client-side. Laid directly on
+ * the page background (no enclosing mega-card) — only the input group and
+ * the result panel get their own light block.
  */
 function FeeCalculator() {
   const { countries } = useCountries();
@@ -36,21 +38,29 @@ function FeeCalculator() {
   }, [amount, rate]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 28 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-10% 0px' }}
-      transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-      className="relative bg-white rounded-3xl border border-ink-200 shadow-[0_30px_70px_-30px_rgba(11,19,36,0.25)] p-6 sm:p-10"
-    >
-      <div className="grid lg:grid-cols-2 gap-10">
-        {/* Inputs */}
-        <div>
-          <p className="text-primary font-semibold tracking-[0.2em] uppercase text-[10px] mb-2">
-            Simulateur
-          </p>
-          <h3 className="text-2xl sm:text-3xl text-ink-900 mb-6">Calculez vos frais</h3>
+    <div>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-10% 0px' }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className="text-center mb-10"
+      >
+        <p className="text-primary font-semibold tracking-[0.2em] uppercase text-[10px] mb-2">
+          Simulateur
+        </p>
+        <h3 className="text-3xl sm:text-4xl text-ink-900">Calculez vos frais</h3>
+      </motion.div>
 
+      <div className="grid lg:grid-cols-2 gap-8 lg:gap-14 items-start">
+        {/* Inputs */}
+        <motion.div
+          initial={{ opacity: 0, x: -24 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true, margin: '-10% 0px' }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="rounded-2xl border border-ink-200 bg-white p-6 sm:p-8"
+        >
           <label className="block text-xs font-semibold uppercase tracking-wide text-ink-700 mb-2">
             Montant de la transaction
           </label>
@@ -97,10 +107,16 @@ function FeeCalculator() {
           ) : (
             <p className="text-sm text-ink-700 italic">Aucun pays configuré pour le moment.</p>
           )}
-        </div>
+        </motion.div>
 
         {/* Result */}
-        <div className="rounded-2xl bg-ink-100/70 border border-ink-200 p-6 sm:p-8 flex flex-col justify-between">
+        <motion.div
+          initial={{ opacity: 0, x: 24 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true, margin: '-10% 0px' }}
+          transition={{ duration: 0.55, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+          className="rounded-2xl bg-ink-100/70 border border-ink-200 p-6 sm:p-8 flex flex-col justify-between lg:min-h-[320px]"
+        >
           <div>
             <div className="flex items-center justify-between py-3 border-b border-ink-200">
               <span className="text-sm text-ink-700">Montant brut</span>
@@ -141,9 +157,9 @@ function FeeCalculator() {
               </div>
             </div>
           )}
-        </div>
+        </motion.div>
       </div>
-    </motion.div>
+    </div>
   );
 }
 

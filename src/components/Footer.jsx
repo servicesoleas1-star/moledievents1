@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { media } from '../config/media';
 
@@ -65,8 +64,6 @@ const socials = [
 ];
 
 function Footer() {
-  const [logoSrc, setLogoSrc] = useState(media.logo);
-
   return (
     <footer className="relative bg-ink-100 text-ink-700 overflow-hidden">
       {/* Compact CTA banner — logo/text left, button right, single row */}
@@ -78,18 +75,13 @@ function Footer() {
         className="relative w-full px-4 sm:px-6 lg:px-8 py-6 border-b border-ink-200 flex flex-col sm:flex-row items-center justify-between gap-4"
       >
         <div className="flex items-center gap-3">
-          <img
-            src={logoSrc}
-            alt="Moledi Event"
-            onError={() => setLogoSrc(media.logoFallback)}
-            className="h-8 w-auto"
-          />
+          <img src={media.logo} alt="Moledi Event" className="h-8 w-auto" />
           <p className="text-ink-900 text-sm sm:text-base font-semibold">
-            De l'idée à l'événement.
+            De l'idée à l'événement en un seul clic.
           </p>
         </div>
         <a href="/inscription" className="btn btn-primary shrink-0">
-          Créer un événement
+          Un seul clic
         </a>
       </motion.div>
 

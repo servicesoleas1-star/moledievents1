@@ -11,18 +11,12 @@ const navLinks = [
   { label: 'Partenaires', href: '/partenaire' },
 ];
 
-// The logo is an image and replaces ALL text — no wordmark next to it.
-// `light` swaps in the light variant for use over the dark video header.
-function Logo({ className = 'h-10', light = false }) {
-  const [src, setSrc] = useState(light ? media.logoLight : media.logo);
+// The logo is a transparent PNG — no wordmark text is added around it, and
+// no light/dark variant swap is needed since it has no baked-in background.
+function Logo({ className = 'h-10' }) {
   return (
     <a href="/" className="flex items-center shrink-0" aria-label="Moledi Event">
-      <img
-        src={src}
-        alt="Moledi Event"
-        className={`${className} w-auto object-contain`}
-        onError={() => setSrc(media.logoFallback)}
-      />
+      <img src={media.logo} alt="Moledi Event" className={`${className} w-auto object-contain`} />
     </a>
   );
 }
@@ -78,7 +72,7 @@ function Navbar() {
     >
       <nav className="max-w-7xl mx-auto flex items-center justify-between gap-6 px-4 sm:px-6 lg:px-8 h-16 sm:h-20">
         <motion.div variants={item}>
-          <Logo className="h-10 sm:h-11" light={!scrolled} />
+          <Logo className="h-10 sm:h-11" />
         </motion.div>
 
         {/* Desktop nav */}
@@ -177,12 +171,7 @@ function MobileMenu({ open, onClose, links }) {
           data-no-translate
         >
           <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-ink-200">
-            <img
-              src={media.logo}
-              alt="Moledi Event"
-              className="h-9 w-auto object-contain"
-              onError={(e) => { e.currentTarget.src = media.logoFallback; }}
-            />
+            <img src={media.logo} alt="Moledi Event" className="h-9 w-auto object-contain" />
             <button
               onClick={onClose}
               aria-label="Fermer"

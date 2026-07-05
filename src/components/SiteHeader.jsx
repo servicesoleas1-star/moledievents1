@@ -4,6 +4,7 @@ import { media } from '../config/media';
 import LanguageSwitcher from '../i18n/LanguageSwitcher';
 
 const navLinks = [
+  { label: 'Accueil', href: '/' },
   { label: 'Événements', href: '/evenements' },
   { label: 'Comment ça marche', href: '/comment-ca-marche' },
   { label: 'Tarifs', href: '/tarifs' },
@@ -40,7 +41,7 @@ function SiteHeader({ activeHref }) {
       animate="show"
       variants={container}
       data-no-translate
-      className="fixed top-0 inset-x-0 z-50 bg-white/95 backdrop-blur-xl border-b border-ink-200"
+      className="fixed top-0 inset-x-0 z-[60] bg-white/95 backdrop-blur-xl border-b border-ink-200"
     >
       <nav className="max-w-7xl mx-auto flex items-center justify-between gap-6 px-4 sm:px-6 lg:px-8 h-16 sm:h-20">
         <motion.div variants={item}>
@@ -94,13 +95,27 @@ function SiteHeader({ activeHref }) {
           </motion.div>
           <motion.button
             variants={item}
-            onClick={() => setOpen(true)}
-            aria-label="Ouvrir le menu"
-            className="w-11 h-11 flex items-center justify-center rounded-lg text-ink-900 hover:bg-ink-100 transition-colors"
+            onClick={() => setOpen((o) => !o)}
+            aria-label={open ? 'Fermer le menu' : 'Ouvrir le menu'}
+            className="relative w-11 h-11 flex items-center justify-center rounded-lg text-ink-900 hover:bg-ink-100 transition-colors"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h10" />
-            </svg>
+            <span className="relative w-5 h-4 block">
+              <motion.span
+                className="absolute left-0 top-0 w-5 h-[2.5px] rounded-full bg-current"
+                animate={open ? { rotate: 45, y: 7 } : { rotate: 0, y: 0 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              />
+              <motion.span
+                className="absolute left-0 top-[7px] w-5 h-[2.5px] rounded-full bg-current"
+                animate={open ? { opacity: 0, x: -6 } : { opacity: 1, x: 0 }}
+                transition={{ duration: 0.2 }}
+              />
+              <motion.span
+                className="absolute left-0 bottom-0 w-5 h-[2.5px] rounded-full bg-current"
+                animate={open ? { rotate: -45, y: -7 } : { rotate: 0, y: 0 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              />
+            </span>
           </motion.button>
         </div>
       </nav>
@@ -112,16 +127,22 @@ function SiteHeader({ activeHref }) {
 
 function MobileMenu({ open, onClose, links, activeHref }) {
   const panel = {
-    hidden: { x: '100%' },
-    show: { x: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
-    exit: { x: '100%', transition: { duration: 0.25, ease: [0.4, 0, 1, 1] } },
+    hidden: { clipPath: 'circle(0% at calc(100% - 34px) 34px)' },
+    show: {
+      clipPath: 'circle(150% at calc(100% - 34px) 34px)',
+      transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] },
+    },
+    exit: {
+      clipPath: 'circle(0% at calc(100% - 34px) 34px)',
+      transition: { duration: 0.4, ease: [0.4, 0, 1, 1] },
+    },
   };
   const overlay = {
     hidden: { opacity: 0 },
     show: { opacity: 1, transition: { duration: 0.3 } },
     exit: { opacity: 0, transition: { duration: 0.25 } },
   };
-  const list = { hidden: {}, show: { transition: { staggerChildren: 0.05, delayChildren: 0.1 } } };
+  const list = { hidden: {}, show: { transition: { staggerChildren: 0.05, delayChildren: 0.25 } } };
   const li = {
     hidden: { opacity: 0, x: 20 },
     show: { opacity: 1, x: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
@@ -144,23 +165,10 @@ function MobileMenu({ open, onClose, links, activeHref }) {
             initial="hidden"
             animate="show"
             exit="exit"
-            className="fixed top-0 right-0 bottom-0 z-50 lg:hidden bg-white w-[82%] max-w-sm shadow-2xl flex flex-col"
+            className="fixed inset-0 z-50 lg:hidden bg-white flex flex-col pt-16 sm:pt-20"
             data-no-translate
           >
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-ink-200">
-              <img src={media.logo} alt="Moledi Event" className="h-8 w-auto object-contain" />
-              <button
-                onClick={onClose}
-                aria-label="Fermer"
-                className="w-10 h-10 rounded-lg bg-ink-100 flex items-center justify-center hover:bg-ink-200 transition-colors"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-ink-900" strokeWidth="2.5">
-                  <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-            </div>
-
-            <motion.ul variants={list} initial="hidden" animate="show" className="flex-1 px-5 pt-2 overflow-y-auto">
+            <motion.ul variants={list} initial="hidden" animate="show" className="flex-1 px-6 pt-6 overflow-y-auto">
               {links.map((l) => (
                 <motion.li key={l.href} variants={li} className="border-b border-ink-200">
                   <a
@@ -176,7 +184,7 @@ function MobileMenu({ open, onClose, links, activeHref }) {
               ))}
             </motion.ul>
 
-            <div className="p-5 border-t border-ink-200 space-y-3">
+            <div className="p-6 border-t border-ink-200 space-y-3">
               <a href="/inscription" onClick={onClose} className="btn btn-primary w-full py-3">
                 Créer un événement
               </a>

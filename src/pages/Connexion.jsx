@@ -105,7 +105,7 @@ function Connexion() {
 
         <div className="relative z-10 flex flex-col h-full w-full px-12 py-11">
           <a href="/" className="mb-auto inline-block">
-            <img src={media.logoLight} alt="Moledi Event" className="h-12 w-auto object-contain" />
+            <img src={media.logo} alt="Moledi Event" className="h-12 w-auto object-contain" />
           </a>
           <div className="flex-1 flex flex-col justify-center py-10 max-w-md">
             <h2 className="font-heading text-4xl sm:text-5xl normal-case text-white leading-tight mb-4">
