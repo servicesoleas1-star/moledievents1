@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { media, illustration } from '../config/media';
 
@@ -27,6 +28,7 @@ function readVisitorId() {
 }
 
 function Connexion() {
+  const navigate = useNavigate();
   const [slide, setSlide] = useState(0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -106,10 +108,6 @@ function Connexion() {
             <img src={media.logoLight} alt="Moledi Event" className="h-12 w-auto object-contain" />
           </a>
           <div className="flex-1 flex flex-col justify-center py-10 max-w-md">
-            <p className="inline-flex items-center gap-2 text-[10px] font-semibold tracking-[0.2em] uppercase text-white/55 mb-4">
-              <i className="fa-solid fa-globe text-primary-300" />
-              Moledi Event · Afrique
-            </p>
             <h2 className="font-heading text-4xl sm:text-5xl normal-case text-white leading-tight mb-4">
               Bon retour <em className="italic text-primary-100 not-italic text-primary-300">parmi nous</em>.
             </h2>
@@ -125,12 +123,16 @@ function Connexion() {
         {/* Mobile header */}
         <header className="flex lg:hidden items-center justify-between px-5 py-4 border-b border-ink-200 sticky top-0 bg-white z-10">
           <img src={media.logo} alt="Moledi Event" className="h-9 w-auto object-contain" />
-          <a href="/" className="text-xs font-semibold text-ink-700 hover:text-primary flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="text-xs font-semibold text-ink-700 hover:text-primary flex items-center gap-1.5"
+          >
             <i className="fa-solid fa-arrow-left" /> Retour
-          </a>
+          </button>
         </header>
 
-        <div className="flex-1 flex items-center justify-center px-6 sm:px-14 py-10">
+        <div className="flex-1 flex items-start lg:items-center justify-center px-6 sm:px-14 pt-6 sm:pt-10 pb-10">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}

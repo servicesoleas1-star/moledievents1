@@ -1,26 +1,30 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { campaignTypes, getCommissionRate } from '../../data/commissionConfig';
-import { countryConfigs } from '../../data/countryConfig';
-import { paymentMethodMeta } from '../../data/paymentMethods';
-import CountryTile from './CountryTile';
-
-const activeCountries = countryConfigs.filter((c) => c.active);
+import { useCountries } from '../../hooks/useCountries';
+import CountrySelect from './CountrySelect';
 
 const formatAmount = (n) =>
   new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(Math.round(n));
 
 /**
- * Interactive simulator — reads its rate straight from `commissionConfig.js`
- * (the CommissionConfig table stand-in) and its country/currency/methods
- * straight from `countryConfig.js` (the CountryConfig table stand-in). If
- * either "table" were empty, the relevant control would render nothing —
- * there is no fallback number invented client-side.
+ * Interactive simulator — reads its rate from `commissionConfig.js` (the
+ * CommissionConfig table stand-in) and its country/currency/methods from
+ * `/api/countries` (the real CountryConfig table, admin-configured). If that
+ * table is empty, the country picker and result panel simply have nothing
+ * to show — no fallback country is invented client-side.
  */
 function FeeCalculator() {
+  const { countries } = useCountries();
+  const activeCountries = countries.filter((c) => c.active);
+
   const [amount, setAmount] = useState('10000');
   const [campaignType, setCampaignType] = useState(campaignTypes[0].key);
-  const [countryCode, setCountryCode] = useState(activeCountries[0]?.country_code || '');
+  const [countryCode, setCountryCode] = useState('');
+
+  useEffect(() => {
+    if (!countryCode && activeCountries[0]) setCountryCode(activeCountries[0].country_code);
+  }, [activeCountries, countryCode]);
 
   const country = activeCountries.find((c) => c.country_code === countryCode);
   const rate = getCommissionRate(campaignType);
@@ -88,17 +92,11 @@ function FeeCalculator() {
           <label className="block text-xs font-semibold uppercase tracking-wide text-ink-700 mb-2">
             Pays
           </label>
-          <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-48 overflow-y-auto pr-1">
-            {activeCountries.map((c) => (
-              <CountryTile
-                key={c.country_code}
-                code={c.country_code}
-                name={c.country_name}
-                selected={countryCode === c.country_code}
-                onClick={() => setCountryCode(c.country_code)}
-              />
-            ))}
-          </div>
+          {activeCountries.length > 0 ? (
+            <CountrySelect countries={activeCountries} value={countryCode} onChange={setCountryCode} />
+          ) : (
+            <p className="text-sm text-ink-700 italic">Aucun pays configuré pour le moment.</p>
+          )}
         </div>
 
         {/* Result */}
@@ -126,7 +124,7 @@ function FeeCalculator() {
             </div>
           </div>
 
-          {country && (
+          {country && country.methods_available?.length > 0 && (
             <div className="mt-4">
               <p className="text-[11px] uppercase tracking-wide font-semibold text-ink-700 mb-2">
                 Moyens de paiement disponibles en {country.country_name}
@@ -137,7 +135,7 @@ function FeeCalculator() {
                     key={m}
                     className="px-3 py-1.5 rounded-lg bg-white border border-ink-200 text-xs font-semibold text-ink-900"
                   >
-                    {paymentMethodMeta[m]?.label || m}
+                    {m}
                   </span>
                 ))}
               </div>

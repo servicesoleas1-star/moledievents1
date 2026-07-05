@@ -75,6 +75,34 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+/**
+ * Countries & payment methods for the Tarifs page — read straight from the
+ * `country_config` / `payment_methods` tables (configured via the admin
+ * panel / Aggregator module). If a table is empty or missing, we return an
+ * empty array rather than inventing placeholder data client-side.
+ */
+app.get('/api/countries', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('country_config').select('*');
+    if (error) throw error;
+    return res.json({ ok: true, countries: data || [] });
+  } catch (err) {
+    console.error('Countries fetch error:', err.message);
+    return res.json({ ok: true, countries: [] });
+  }
+});
+
+app.get('/api/payment-methods', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('payment_methods').select('*');
+    if (error) throw error;
+    return res.json({ ok: true, methods: data || [] });
+  } catch (err) {
+    console.error('Payment methods fetch error:', err.message);
+    return res.json({ ok: true, methods: [] });
+  }
+});
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });

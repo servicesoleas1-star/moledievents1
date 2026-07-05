@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import SiteHeader from '../components/SiteHeader';
 import Footer from '../components/Footer';
@@ -128,6 +128,23 @@ const sections = [
 function Confidentialite() {
   const [activeId, setActiveId] = useState(sections[0].id);
 
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length > 0) {
+          setActiveId(visible[0].target.id);
+        }
+      },
+      { rootMargin: '-15% 0px -70% 0px', threshold: 0 }
+    );
+    sections.forEach((s) => {
+      const el = document.getElementById(s.id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
       <SiteHeader activeHref="/confidentialite" />
@@ -176,10 +193,10 @@ function Confidentialite() {
               <motion.div
                 key={s.id}
                 id={s.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, x: i % 2 === 0 ? -28 : 28 }}
+                whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true, margin: '-10% 0px' }}
-                transition={{ duration: 0.55, delay: Math.min(i * 0.03, 0.2), ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
                 className="scroll-mt-28"
               >
                 <h2 className="text-xl sm:text-2xl text-ink-900 mb-4 normal-case font-heading tracking-wide">

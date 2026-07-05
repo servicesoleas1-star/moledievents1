@@ -69,42 +69,39 @@ function Footer() {
 
   return (
     <footer className="relative bg-ink-100 text-ink-700 overflow-hidden">
-      {/* Restrained glows — orange + light blue only, matching the rest of the site */}
-      <div className="pointer-events-none absolute -top-24 -right-24 w-80 h-80 rounded-full bg-secondary/5 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-primary/5 blur-3xl" />
-
-      {/* CTA — a simple, sober line, no coloured panel */}
+      {/* Compact CTA banner — logo/text left, button right, single row */}
       <motion.div
-        initial={{ opacity: 0, y: 24 }}
+        initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-15% 0px' }}
-        transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-        className="relative max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-14 text-center"
+        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        className="relative w-full px-4 sm:px-6 lg:px-8 py-6 border-b border-ink-200 flex flex-col sm:flex-row items-center justify-between gap-4"
       >
-        <h3 className="text-ink-900 text-2xl sm:text-4xl mb-6 leading-tight">
-          À l'événement annuel
-        </h3>
-        <a href="/inscription" className="btn btn-primary">
+        <div className="flex items-center gap-3">
+          <img
+            src={logoSrc}
+            alt="Moledi Event"
+            onError={() => setLogoSrc(media.logoFallback)}
+            className="h-8 w-auto"
+          />
+          <p className="text-ink-900 text-sm sm:text-base font-semibold">
+            De l'idée à l'événement.
+          </p>
+        </div>
+        <a href="/inscription" className="btn btn-primary shrink-0">
           Créer un événement
         </a>
       </motion.div>
 
-      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-ink-200">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 pt-14 pb-12">
+      <div className="relative w-full px-4 sm:px-6 lg:px-8 py-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-6">
           {/* Brand column */}
-          <div className="lg:col-span-4">
-            <img
-              src={logoSrc}
-              alt="Moledi Event"
-              onError={() => setLogoSrc(media.logoFallback)}
-              className="h-11 w-auto"
-            />
-            <p className="mt-4 text-sm normal-case max-w-xs leading-relaxed">
-              Moledi Event connecte les organisateurs et le public, d'un bout
-              à l'autre du continent africain.
+          <div className="lg:col-span-3">
+            <p className="text-sm normal-case max-w-xs leading-relaxed">
+              Moledi Event connecte les organisateurs et le public autour de leurs événements.
             </p>
 
-            <div className="flex flex-wrap gap-2 mt-6">
+            <div className="flex flex-wrap gap-2 mt-4">
               {socials.map((s) => (
                 <a
                   key={s.name}
@@ -117,9 +114,9 @@ function Footer() {
                       ? { backgroundImage: s.bg }
                       : { backgroundColor: s.bg }
                   }
-                  className="w-9 h-9 flex items-center justify-center rounded-xl shadow-sm transition-transform hover:scale-110 hover:-translate-y-0.5"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg shadow-sm transition-transform hover:scale-110 hover:-translate-y-0.5"
                 >
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="white">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="white">
                     <path d={s.path} />
                   </svg>
                 </a>
@@ -128,21 +125,21 @@ function Footer() {
 
             <a
               href="mailto:contact@moledievent.com"
-              className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-ink-900 hover:text-primary transition-colors"
+              className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-ink-900 hover:text-primary transition-colors"
             >
               contact@moledievent.com
             </a>
           </div>
 
-          {/* Link columns */}
-          <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 gap-8">
+          {/* Link columns — all on one row */}
+          <div className="lg:col-span-9 grid grid-cols-3 gap-6 sm:gap-10">
             {columns.map((col, ci) => (
               <div key={col.title}>
-                <h4 className="flex items-center gap-2 text-ink-900 font-semibold text-xs uppercase tracking-[0.2em] mb-4">
+                <h4 className="flex items-center gap-2 text-ink-900 font-semibold text-xs uppercase tracking-[0.2em] mb-3">
                   <span className={`w-1 h-4 rounded-full ${ci % 2 === 0 ? 'bg-primary' : 'bg-secondary'}`} />
                   {col.title}
                 </h4>
-                <ul className="space-y-2.5 text-sm">
+                <ul className="space-y-2 text-sm">
                   {col.links.map((link) => (
                     <li key={link.href}>
                       <a href={link.href} className="inline-flex items-center gap-1.5 hover:text-primary transition-colors group">
@@ -157,13 +154,8 @@ function Footer() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-6 border-t border-ink-200 text-xs text-ink-700/70">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-8 mt-8 border-t border-ink-200 text-xs text-ink-700/70">
           <p>© {new Date().getFullYear()} Moledi Event. Tous droits réservés.</p>
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-            <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
-            <span className="ml-1">Fait pour l'Afrique</span>
-          </div>
         </div>
       </div>
     </footer>

@@ -19,9 +19,7 @@ function Tarifs() {
       <SiteHeader activeHref="/tarifs" />
       <main className="pt-16 sm:pt-20">
         {/* Hero */}
-        <section className="relative py-16 sm:py-24 text-center overflow-hidden">
-          <div className="pointer-events-none absolute -top-24 -right-24 w-80 h-80 rounded-full bg-primary/5 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-secondary/5 blur-3xl" />
+        <section className="relative py-16 sm:py-24 text-center">
           <motion.div
             initial={{ opacity: 0, y: 28 }}
             animate={{ opacity: 1, y: 0 }}
@@ -31,7 +29,7 @@ function Tarifs() {
             <p className="text-primary font-semibold tracking-[0.2em] uppercase text-[10px] mb-3">
               Tarifs & couverture
             </p>
-            <h1 className="text-4xl sm:text-6xl text-ink-900 mb-5">Simple, transparent, africain</h1>
+            <h1 className="text-4xl sm:text-6xl text-ink-900 mb-5">Simple et transparent</h1>
             <p className="text-ink-700 normal-case max-w-xl mx-auto">
               Une seule commission, prélevée uniquement quand vous encaissez. Pas de frais fixes,
               pas d'abonnement.
