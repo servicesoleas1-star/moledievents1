@@ -74,6 +74,7 @@ function ZUIHubStory() {
   const lastScrollYRef = useRef(0);
   const programmaticScrollRef = useRef(false);
   const didInitialSnapRef = useRef(false);
+  const isTouchingRef = useRef(false);
   const [inSection, setInSection] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
@@ -304,6 +305,24 @@ function ZUIHubStory() {
     };
   }, []);
 
+  // Track whether a finger is actively on the glass. We must NOT fight the
+  // browser's own touch-driven scroll with a competing scrollTo() while a
+  // touch is in progress — doing so is what made the whole thing feel
+  // laggy/buggy on mobile. While touching, we only observe (accumulate
+  // delta, decide steps); the corrective snap-back is deferred to touchend.
+  useEffect(() => {
+    const onTouchStart = () => { isTouchingRef.current = true; };
+    const onTouchEnd = () => { isTouchingRef.current = false; };
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, []);
+
   // The whole step engine, driven off the document's actual scroll position
   // instead of separate wheel/touch listeners. Rationale for the rewrite:
   //
@@ -314,18 +333,29 @@ function ZUIHubStory() {
   //   the whole section before any JS ran. `scroll` events, in contrast,
   //   keep firing throughout native momentum, so this is the only event
   //   that can reliably catch a fast fling on mobile.
-  // - Because the section is `sticky` inside a wrapper taller than the
-  //   viewport (see the JSX below), it renders pinned at top:0 for *any*
-  //   scrollY between the anchor and anchor+buffer — so nudging scrollY
-  //   back to the anchor every captured event is 100% invisible (nothing
-  //   moves on screen) while guaranteeing the buffer never gets consumed
-  //   by legitimate story progress, only reserved for absorbing whatever a
-  //   single scroll/fling event's overshoot is.
+  // - The section is `sticky` inside a wrapper taller than the viewport, so
+  //   it renders pinned at top:0 for any scrollY between the anchor and
+  //   anchor+buffer. Two independent signals decide whether we're inside
+  //   that capturable zone right now: the live, always-accurate
+  //   getBoundingClientRect().top (reads exactly 0 while genuinely pinned),
+  //   and a cached numeric anchor compared against scrollY (immune to a
+  //   single huge jump that skips straight over top===0 without ever
+  //   landing on it). Either signal confirming "arrived" is enough — this
+  //   is what keeps a fast mobile fling from skipping the section outright
+  //   while not depending on a stale anchor measured once at mount (the
+  //   anchor self-heals below any time top really is 0, so it can't drift
+  //   out of sync with a mobile browser's address-bar resize).
+  // - A tiny scroll is enough to fire the next step: this is meant to feel
+  //   like a nudge that tells the browser "play the next clip", not a
+  //   scrollbar the user has to drag any real distance. The animation's own
+  //   duration (STEP_DURATION above) is what gives the story its pacing,
+  //   completely independent of how hard or fast the user scrolled.
   // - A scroll intent that lands while a clip is still playing is banked
   //   (see goToStep's onComplete) instead of silently discarded, so
-  //   "scrolling again mid-animation" always counts.
+  //   "scrolling again mid-animation" always counts instead of needing to
+  //   be repeated.
   useEffect(() => {
-    const THRESHOLD = 60;
+    const THRESHOLD = 18;
     const GESTURE_TIMEOUT = 400;
 
     const onScroll = () => {
@@ -335,32 +365,54 @@ function ZUIHubStory() {
         return;
       }
       const stops = stopsRef.current;
-      if (!stops.length) return;
+      if (!stops.length || !rootRef.current) return;
 
       const scrollY = window.scrollY;
-      const anchor = anchorYRef.current;
       const delta = scrollY - lastScrollYRef.current;
       lastScrollYRef.current = scrollY;
       if (!delta) return;
 
+      const top = rootRef.current.getBoundingClientRect().top;
+      // Self-heal: any time we can directly observe we're exactly pinned,
+      // that scrollY IS a valid anchor — refresh the cache from it so it
+      // can never drift out of sync with the live DOM.
+      if (Math.abs(top) < 1) anchorYRef.current = scrollY;
+      const anchor = anchorYRef.current;
+
+      // A reload can land the page somewhere our internal state doesn't
+      // match — e.g. a mobile browser restoring a scroll position from way
+      // down the page while our state resets to step 0 on every fresh
+      // mount. If we're much further from the anchor than any single
+      // scroll/fling event could realistically travel, this is unrelated
+      // scrolling elsewhere on the page — never try to capture it. (Bounded
+      // by a multiple of the buffer rather than a fixed number, and using
+      // the numeric anchor rather than `top`, so a single huge-but-genuine
+      // overshoot — the worst case a fast mobile fling can produce — still
+      // gets captured instead of released.)
+      if (Math.abs(scrollY - anchor) > bufferRef.current * 5) return;
+
       const atStart = currentStepRef.current === 0;
       const atEnd = currentStepRef.current === stops.length - 1;
-      // Release to native scroll: at the very first stop, still above the
-      // section (haven't arrived yet, or scrolling back up past it); at the
-      // very last stop, already below it (finished, or scrolling on past).
-      // No magnitude check here on purpose — a scroll/fling of *any* size
-      // that lands past the anchor while at the first/last stop must still
-      // be captured and corrected below, otherwise a big enough single jump
-      // (exactly what mobile momentum can produce) would skip the section
-      // outright instead of being reeled back in.
-      if (atStart && scrollY < anchor) return;
-      if (atEnd && scrollY > anchor) return;
+      // Release to native scroll: at the very first stop, either the live
+      // top or the cached anchor still says we haven't arrived, or we're
+      // scrolling back up further; at the very last stop, either signal
+      // says we've already left, or we're scrolling further down.
+      const notYetArrived = atStart && top > 2 && scrollY < anchor;
+      const leavingUp = atStart && delta < 0;
+      const alreadyExited = atEnd && top < -2 && scrollY > anchor;
+      const leavingDown = atEnd && delta > 0;
+      if (notYetArrived || leavingUp || alreadyExited || leavingDown) return;
 
-      // Captured: hold the page at the anchor (invisible, thanks to
-      // sticky) and turn the raw scroll delta into step-advance intent.
-      programmaticScrollRef.current = true;
-      window.scrollTo(0, anchor);
-      lastScrollYRef.current = anchor;
+      // Captured. Skip the corrective snap-back while a finger is actively
+      // on the screen — fighting native touch-scroll physics mid-gesture is
+      // what made this feel laggy/buggy on mobile. Bank the delta below
+      // regardless; the drift left over from not correcting mid-touch gets
+      // reeled back in on touchend instead.
+      if (!isTouchingRef.current && Math.abs(top) > 0.5) {
+        programmaticScrollRef.current = true;
+        window.scrollTo(0, anchor);
+        lastScrollYRef.current = anchor;
+      }
 
       const now = performance.now();
       if (now - lastGestureTimeRef.current > GESTURE_TIMEOUT || Math.sign(accumRef.current) === -Math.sign(delta)) {
@@ -380,8 +432,32 @@ function ZUIHubStory() {
       }
     };
 
+    // Once the finger lifts, reel back in any drift accumulated while we
+    // deliberately didn't fight the active touch-driven scroll.
+    const onTouchEnd = () => {
+      if (!rootRef.current) return;
+      const stops = stopsRef.current;
+      if (!stops.length) return;
+      const top = rootRef.current.getBoundingClientRect().top;
+      const scrollY = window.scrollY;
+      if (Math.abs(top) < 1) anchorYRef.current = scrollY;
+      const anchor = anchorYRef.current;
+      const atStart = currentStepRef.current === 0;
+      const atEnd = currentStepRef.current === stops.length - 1;
+      const stillOutside = (atStart && top > 2 && scrollY < anchor) || (atEnd && top < -2 && scrollY > anchor);
+      if (!stillOutside && Math.abs(scrollY - anchor) > 0.5) {
+        programmaticScrollRef.current = true;
+        window.scrollTo(0, anchor);
+        lastScrollYRef.current = anchor;
+      }
+    };
+
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
   }, []);
 
   const goToLabel = (label) => {
