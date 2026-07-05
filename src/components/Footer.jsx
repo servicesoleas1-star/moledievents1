@@ -72,15 +72,15 @@ function Footer() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-15% 0px' }}
         transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-        className="relative w-full px-4 sm:px-6 lg:px-8 py-6 border-b border-ink-200 flex flex-col sm:flex-row items-center justify-between gap-4"
+        className="relative w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 border-b border-ink-200 flex flex-row items-center justify-between gap-2 sm:gap-4"
       >
-        <div className="flex items-center gap-3">
-          <img src={media.logo} alt="Moledi Event" className="h-8 w-auto" />
-          <p className="text-ink-900 text-sm sm:text-base font-semibold">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <img src={media.logo} alt="Moledi Event" className="h-6 sm:h-8 w-auto shrink-0" />
+          <p className="text-ink-900 text-xs sm:text-base font-semibold truncate">
             De l'idée à l'événement.
           </p>
         </div>
-        <a href="/inscription" className="btn btn-primary shrink-0">
+        <a href="/inscription" className="btn btn-primary shrink-0 !px-4 sm:!px-6 !text-xs sm:!text-sm whitespace-nowrap">
           Un seul clic
         </a>
       </motion.div>
