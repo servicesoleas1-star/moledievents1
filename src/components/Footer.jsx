@@ -68,14 +68,18 @@ function Footer() {
   const [logoSrc, setLogoSrc] = useState(media.logo);
 
   return (
-    <footer className="relative bg-[#F1ECE5] text-ink-700 overflow-hidden">
+    <footer className="relative bg-ink-100 text-ink-700 overflow-hidden">
+      {/* Restrained glows — orange + light blue only, matching the rest of the site */}
+      <div className="pointer-events-none absolute -top-24 -right-24 w-80 h-80 rounded-full bg-secondary/5 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-primary/5 blur-3xl" />
+
       {/* CTA — a simple, sober line, no coloured panel */}
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-15% 0px' }}
         transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-        className="relative max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-4 text-center"
+        className="relative max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-14 text-center"
       >
         <h3 className="text-ink-900 text-2xl sm:text-4xl mb-6 leading-tight">
           À l'événement annuel
@@ -85,9 +89,10 @@ function Footer() {
         </a>
       </motion.div>
 
-      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 pb-10">
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10 pb-10 border-b border-ink-200">
-          <div className="col-span-2 lg:col-span-1">
+      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-ink-200">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 pt-14 pb-12">
+          {/* Brand column */}
+          <div className="lg:col-span-4">
             <img
               src={logoSrc}
               alt="Moledi Event"
@@ -120,33 +125,45 @@ function Footer() {
                 </a>
               ))}
             </div>
+
+            <a
+              href="mailto:contact@moledievent.com"
+              className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-ink-900 hover:text-primary transition-colors"
+            >
+              contact@moledievent.com
+            </a>
           </div>
 
-          {columns.map((col, ci) => (
-            <div key={col.title}>
-              <h4 className="flex items-center gap-2 text-ink-900 font-semibold text-xs uppercase tracking-[0.2em] mb-4">
-                <span className={`w-1 h-4 rounded-full ${ci % 2 === 0 ? 'bg-gradient-to-b from-primary to-primary-300' : 'bg-gradient-to-b from-secondary to-secondary-100'}`} />
-                {col.title}
-              </h4>
-              <ul className="space-y-2.5 text-sm">
-                {col.links.map((link) => (
-                  <li key={link.href}>
-                    <a href={link.href} className="inline-flex items-center gap-1.5 hover:text-primary transition-colors group">
-                      <span className="w-1 h-1 rounded-full bg-ink-200 group-hover:bg-primary transition-colors" />
-                      {link.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          {/* Link columns */}
+          <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 gap-8">
+            {columns.map((col, ci) => (
+              <div key={col.title}>
+                <h4 className="flex items-center gap-2 text-ink-900 font-semibold text-xs uppercase tracking-[0.2em] mb-4">
+                  <span className={`w-1 h-4 rounded-full ${ci % 2 === 0 ? 'bg-primary' : 'bg-secondary'}`} />
+                  {col.title}
+                </h4>
+                <ul className="space-y-2.5 text-sm">
+                  {col.links.map((link) => (
+                    <li key={link.href}>
+                      <a href={link.href} className="inline-flex items-center gap-1.5 hover:text-primary transition-colors group">
+                        <span className="w-1 h-1 rounded-full bg-ink-200 group-hover:bg-primary transition-colors" />
+                        {link.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-8 text-xs text-ink-700/70">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-6 border-t border-ink-200 text-xs text-ink-700/70">
           <p>© {new Date().getFullYear()} Moledi Event. Tous droits réservés.</p>
-          <a href="mailto:contact@moledievent.com" className="hover:text-primary transition-colors">
-            contact@moledievent.com
-          </a>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+            <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+            <span className="ml-1">Fait pour l'Afrique</span>
+          </div>
         </div>
       </div>
     </footer>

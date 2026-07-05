@@ -57,18 +57,12 @@ function Hero() {
   }, []);
 
   return (
-    <section className="relative min-h-[100svh] flex items-center overflow-hidden bg-ink-900">
+    <section className="relative min-h-[100svh] flex items-center justify-center overflow-hidden bg-ink-900">
       {/* Video background — fills the ENTIRE header, including the menu
           band above it (the navbar floats transparent on top until the
-          user scrolls). Looping, and visible enough to read as footage,
-          with a measured dark veil so the white copy always stays crisp —
-          that contrast is what gives the header its sense of depth. */}
-      <img
-        src={media.heroPoster}
-        alt=""
-        aria-hidden
-        className="absolute inset-0 w-full h-full object-cover"
-      />
+          user scrolls). Looping, softly blurred and dimmed to ~60% so it
+          reads as ambient footage (illustrations only, no text on it)
+          rather than a sharp, competing layer — the copy stays the focus. */}
       {videoAvailable && (
         <video
           ref={videoRef}
@@ -78,38 +72,32 @@ function Hero() {
           playsInline
           preload="none"
           poster={media.heroPoster}
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
-            videoReady ? 'opacity-100' : 'opacity-0'
+          className={`absolute inset-0 w-full h-full object-cover scale-105 blur-[2px] transition-opacity duration-1000 ${
+            videoReady ? 'opacity-60' : 'opacity-0'
           }`}
         >
           <source src={media.heroVideo} type="video/mp4" />
         </video>
       )}
-      <div className="absolute inset-0 bg-gradient-to-b from-ink-900/75 via-ink-900/35 to-ink-900/80" />
-      <div className="absolute inset-0 bg-gradient-to-t from-ink-900/60 via-transparent to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-b from-ink-900/70 via-ink-900/45 to-ink-900/85" />
+      <div className="absolute inset-0 bg-gradient-to-t from-ink-900/50 via-transparent to-transparent" />
+      {/* Smooth hand-off into the next (white) section — no hard seam. */}
+      <div className="absolute inset-x-0 bottom-0 h-40 sm:h-56 bg-gradient-to-b from-transparent to-white pointer-events-none" />
 
       <motion.div
         variants={wrap}
         initial="hidden"
         animate="show"
-        className="relative z-10 max-w-6xl mx-auto px-5 sm:px-6 lg:px-8 w-full text-center pt-16"
+        className="relative z-10 max-w-6xl mx-auto px-5 sm:px-6 lg:px-8 w-full text-center"
       >
-        <motion.p
-          variants={rise}
-          className="inline-flex items-center gap-2 text-white font-semibold tracking-[0.24em] uppercase text-[10px] sm:text-xs mb-6 px-4 py-2 rounded-lg border border-white/25 bg-white/10 backdrop-blur-sm"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-primary-300" />
-          Moledi Event
-        </motion.p>
-
         <h1
           className="text-white leading-[1.06] sm:leading-[1.0]"
           style={{ fontSize: 'clamp(2.1rem, 8vw, 5.2rem)' }}
         >
-          <WordsReveal text="De l'idée à l'événement," delay={0.45} className="block" />
+          <WordsReveal text="De l'idée à l'événement," delay={0.3} className="block" />
           <WordsReveal
             text="en un clic"
-            delay={0.95}
+            delay={0.8}
             className="block"
             wordClassName={() => 'bg-gradient-to-r from-primary-300 to-primary-100 bg-clip-text text-transparent'}
           />
@@ -119,8 +107,8 @@ function Hero() {
           variants={rise}
           className="mt-6 sm:mt-7 text-sm sm:text-lg md:text-xl text-white/85 normal-case max-w-xl sm:max-w-2xl mx-auto"
         >
-          Moledi Event rassemble tous vos rendez-vous — grands ou intimes —
-          en un seul endroit, simple à organiser et à partager.
+          Chaque événement raconte une histoire. Moledi Event vous aide à
+          l'écrire, du premier billet au dernier applaudissement.
         </motion.p>
 
         <motion.div
