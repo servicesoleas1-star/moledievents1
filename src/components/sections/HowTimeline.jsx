@@ -53,7 +53,7 @@ function HowTimeline() {
   const lineHeight = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);
 
   return (
-    <section ref={rootRef} className="relative bg-gradient-to-b from-white via-ink-100/40 to-white py-16 sm:py-28 overflow-hidden">
+    <section ref={rootRef} className="relative py-16 sm:py-28 overflow-hidden">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12 sm:mb-24">
           <p className="text-primary font-semibold tracking-[0.2em] uppercase text-[10px] mb-2">
@@ -62,13 +62,14 @@ function HowTimeline() {
           <h2 className="text-3xl sm:text-5xl text-ink-900">Quatre étapes, zéro friction</h2>
         </div>
 
-        <div className="relative">
-          {/* Timeline rail (positioned at ~24px from left on mobile,
-              at horizontal centre on desktop) */}
-          <div className="absolute top-0 bottom-0 w-1 rounded-full bg-ink-200 left-4 sm:left-1/2 sm:-translate-x-1/2" />
+        <div className="relative pb-2">
+          {/* Timeline rail — a single thin line running the full height of
+              the section (including past the last step), positioned near
+              the left edge on mobile and centred on desktop. */}
+          <div className="absolute top-0 bottom-0 w-px bg-ink-200 left-4 sm:left-1/2 sm:-translate-x-1/2" />
           <motion.div
             style={{ height: lineHeight }}
-            className="absolute top-0 w-1 rounded-full bg-gradient-to-b from-primary to-primary-300 left-4 sm:left-1/2 sm:-translate-x-1/2"
+            className="absolute top-0 w-px bg-primary left-4 sm:left-1/2 sm:-translate-x-1/2"
           />
 
           <ul className="space-y-10 sm:space-y-28">
@@ -76,18 +77,6 @@ function HowTimeline() {
               <Step key={s.n} step={s} index={i} />
             ))}
           </ul>
-        </div>
-
-        <div className="mt-12 sm:mt-20 text-center">
-          <a
-            href="/inscription"
-            className="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-primary-300 text-white font-semibold rounded-full px-8 py-3.5 shadow-[0_16px_36px_-8px_rgba(255,106,0,0.55)]"
-          >
-            Créer mon premier événement
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </a>
         </div>
       </div>
     </section>

@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { translatePage, restoreOriginal } from '../lib/translate';
 
 const STORAGE_KEY = 'moledi_lang';
 
@@ -8,6 +7,10 @@ export const LANGUAGES = {
   en: { code: 'en', label: 'English' },
 };
 
+// NOTE: the Google Translate integration (src/lib/translate.js) is
+// deliberately not wired up here — the FR/EN switcher stays visible in the
+// UI per spec, but the actual page-translation feature is disabled for now
+// and will be reactivated in a later version.
 const LanguageContext = createContext({
   lang: 'fr',
   setLang: () => {},
@@ -16,7 +19,6 @@ const LanguageContext = createContext({
 
 export function LanguageProvider({ children }) {
   const [lang, setLangState] = useState('fr');
-  const [translating, setTranslating] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -27,24 +29,14 @@ export function LanguageProvider({ children }) {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  const setLang = async (code) => {
+  const setLang = (code) => {
     if (!LANGUAGES[code] || code === lang) return;
     localStorage.setItem(STORAGE_KEY, code);
-    setTranslating(true);
-    try {
-      if (code === 'fr') {
-        restoreOriginal(document.body);
-      } else {
-        await translatePage(document.body, 'fr', code);
-      }
-    } finally {
-      setTranslating(false);
-      setLangState(code);
-    }
+    setLangState(code);
   };
 
   return (
-    <LanguageContext.Provider value={{ lang, setLang, translating }}>
+    <LanguageContext.Provider value={{ lang, setLang, translating: false }}>
       {children}
     </LanguageContext.Provider>
   );

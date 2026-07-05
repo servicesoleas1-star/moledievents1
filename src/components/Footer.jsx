@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { media } from '../config/media';
 
 const columns = [
@@ -67,34 +68,22 @@ function Footer() {
   const [logoSrc, setLogoSrc] = useState(media.logo);
 
   return (
-    <footer className="relative bg-gradient-to-b from-white to-ink-100 text-ink-700 overflow-hidden">
-      {/* Soft charter glows to stay in the same visual world as the page */}
-      <div className="pointer-events-none absolute -top-24 -left-24 w-72 h-72 rounded-full bg-primary/5 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -right-24 w-72 h-72 rounded-full bg-secondary/5 blur-3xl" />
-
-      {/* CTA band — charter orange gradient */}
-      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-16">
-        <div className="relative rounded-[2rem] bg-gradient-to-r from-primary to-primary-300 p-8 sm:p-12 text-center overflow-hidden shadow-[0_30px_70px_-30px_rgba(255,106,0,0.6)]">
-          <div className="pointer-events-none absolute -top-10 -right-10 w-44 h-44 rounded-full bg-white/15 blur-2xl" />
-          <div className="pointer-events-none absolute -bottom-14 -left-10 w-52 h-52 rounded-full bg-white/10 blur-2xl" />
-          <h3 className="relative text-white text-2xl sm:text-4xl mb-3 leading-tight">
-            Moledi Event, le rendez-vous ne rate jamais
-          </h3>
-          <p className="relative text-white/90 normal-case mb-6 max-w-lg mx-auto text-sm sm:text-base">
-            Rejoignez les organisateurs qui font confiance à Moledi Event
-            partout en Afrique francophone.
-          </p>
-          <a
-            href="/inscription"
-            className="relative inline-flex items-center gap-2 bg-white text-ink-900 font-semibold rounded-full px-8 py-3.5 shadow-lg hover:shadow-xl transition-shadow"
-          >
-            Commencer gratuitement
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-primary">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </a>
-        </div>
-      </div>
+    <footer className="relative bg-[#F1ECE5] text-ink-700 overflow-hidden">
+      {/* CTA — a simple, sober line, no coloured panel */}
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-15% 0px' }}
+        transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+        className="relative max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-4 text-center"
+      >
+        <h3 className="text-ink-900 text-2xl sm:text-4xl mb-6 leading-tight">
+          À l'événement annuel
+        </h3>
+        <a href="/inscription" className="btn btn-primary">
+          Créer un événement
+        </a>
+      </motion.div>
 
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 pb-10">
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10 pb-10 border-b border-ink-200">
@@ -106,9 +95,8 @@ function Footer() {
               className="h-11 w-auto"
             />
             <p className="mt-4 text-sm normal-case max-w-xs leading-relaxed">
-              Moledi Event — de l'idée à l'événement, en un clic. Billetterie,
-              votes, cagnottes, crowdfunding, sponsoring et concours en
-              Afrique francophone.
+              Moledi Event connecte les organisateurs et le public, d'un bout
+              à l'autre du continent africain.
             </p>
 
             <div className="flex flex-wrap gap-2 mt-6">
